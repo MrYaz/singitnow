@@ -1,0 +1,85 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from './lib/db'
+import { getSettings, type Settings } from './lib/learn'
+import { NavContext, type Screen } from './nav'
+import { SettingsContext } from './settings'
+import Home from './screens/Home'
+import Setup from './screens/Setup'
+import SongPath from './screens/SongPath'
+import Lesson from './screens/Lesson'
+import Rehearsal from './screens/Rehearsal'
+import SettingsScreen from './screens/SettingsScreen'
+import Tune from './screens/Tune'
+import Concert from './screens/Concert'
+
+export default function App() {
+  const [stack, setStack] = useState<Screen[]>([{ name: 'home' }])
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const songCount = useLiveQuery(() => db.songs.count(), [])
+
+  useEffect(() => {
+    void getSettings().then(setSettings)
+  }, [])
+
+  const nav = useMemo(
+    () => ({
+      go: (s: Screen) => {
+        setStack((st) => [...st, s])
+        window.scrollTo(0, 0)
+      },
+      back: () => setStack((st) => (st.length > 1 ? st.slice(0, -1) : st)),
+    }),
+    [],
+  )
+
+  const settingsCtx = useMemo(
+    () => ({
+      settings: settings!,
+      reload: async () => setSettings(await getSettings()),
+    }),
+    [settings],
+  )
+
+  if (!settings || songCount === undefined) return <div className="grid h-full place-items-center text-brand-600">Laddar…</div>
+
+  const screen = stack.at(-1)!
+  const needsSetup = songCount === 0 || !settings.voice
+  let body: React.ReactNode
+  if (needsSetup && screen.name !== 'settings') body = <Setup />
+  else
+    switch (screen.name) {
+      case 'home':
+        body = <Home />
+        break
+      case 'setup':
+        body = <Setup />
+        break
+      case 'settings':
+        body = <SettingsScreen />
+        break
+      case 'song':
+        body = <SongPath songId={screen.songId} />
+        break
+      case 'lesson':
+        body = <Lesson key={stack.length} title={screen.title} items={screen.items} level={screen.level} />
+        break
+      case 'rehearsal':
+        body = <Rehearsal songId={screen.songId} />
+        break
+      case 'tune':
+        body = <Tune songId={screen.songId} />
+        break
+      case 'concert':
+        body = <Concert songId={screen.songId} />
+        break
+    }
+
+  return (
+    <NavContext.Provider value={nav}>
+      <SettingsContext.Provider value={settingsCtx}>
+        <div className="mx-auto flex min-h-full max-w-xl flex-col pb-[env(safe-area-inset-bottom)]">{body}</div>
+      </SettingsContext.Provider>
+    </NavContext.Provider>
+  )
+}

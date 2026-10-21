@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #f5f0ff;
+  --color-brand-100: #ebe1ff;
+  --color-brand-200: #d6c4ff;
+  --color-brand-400: #a678ff;
+  --color-brand-500: #8b5cf6;
+  --color-brand-600: #7c3aed;
+  --color-brand-700: #6526c9;
+  --color-good-100: #dcfce7;
+  --color-good-500: #22c55e;
+  --color-good-600: #16a34a;
+  --color-warm-100: #ffedd5;
+  --color-warm-500: #f59e0b;
+  --color-harmony: #fde3cc;
+  --font-sans: "Nunito", ui-rounded, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #faf7ff;
+  color: #1f1534;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 font-extrabold tracking-wide transition active:translate-y-0.5 disabled:opacity-40 disabled:active:translate-y-0;
+}
+@utility btn-primary {
+  @apply btn bg-brand-600 text-white shadow-[0_4px_0_#4c1d95] active:shadow-[0_2px_0_#4c1d95];
+}
+@utility btn-good {
+  @apply btn bg-good-500 text-white shadow-[0_4px_0_#15803d] active:shadow-[0_2px_0_#15803d];
+}
+@utility btn-ghost {
+  @apply btn border-2 border-brand-100 bg-white text-brand-700 shadow-[0_3px_0_#e9e1fb] active:shadow-[0_1px_0_#e9e1fb];
+}
+@utility card {
+  @apply rounded-3xl border-2 border-brand-100 bg-white p-4;
+}
+.harmony {
+  background: var(--color-harmony);
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+.shake { animation: shake 0.25s ease-in-out 2; }
+
+@keyframes pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.pop { animation: pop 0.35s ease-out; }
