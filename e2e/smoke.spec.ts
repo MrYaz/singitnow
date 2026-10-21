@@ -65,4 +65,17 @@ test('import, learn and rehearse', async ({ page }) => {
   await page.getByRole('button', { name: 'A2', exact: true }).click()
   await expect(page.getByText('I was so lonesome, I was blue').first()).toBeVisible()
   await page.screenshot({ path: 'test-results/07-rest.png', fullPage: true })
+
+  // Körrep: just the lyrics, with adjustable size, and on to the next song.
+  await page.getByRole('button', { name: 'Tillbaka' }).click()
+  await page.getByRole('button', { name: 'Körrep' }).first().click()
+  await expect(page.getByRole('heading', { name: 'Why did it have to be me' })).toBeVisible()
+  await page.getByRole('button', { name: 'Större text' }).click()
+  await page.getByRole('button', { name: 'Alt 2', exact: true }).click()
+  await expect(page.getByText(/tyst \(Sopraner\)/).first()).toBeVisible()
+  await page.screenshot({ path: 'test-results/08-read.png' })
+  await page.setViewportSize({ width: 820, height: 1180 })
+  await page.screenshot({ path: 'test-results/08b-read-tablet.png' })
+  await page.getByRole('button', { name: /This is me ›/ }).click()
+  await expect(page.getByRole('heading', { name: 'This is me' })).toBeVisible()
 })

@@ -5,7 +5,8 @@ import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../
 import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
 import { pickVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
-import { importSources } from '../lib/importer'
+import { ImportError, importSources, songsToFetch } from '../lib/importer'
+import type { SourceFile } from '../lib/sources'
 import { DRIVE_KEY, listDriveFolder, takeLinkedDrive } from '../lib/sources'
 import { onRefineStatus, refineInBackground } from '../lib/refine'
 import { useNav, type LessonItem } from '../nav'
@@ -40,25 +41,46 @@ export default function Home() {
   const mineRef = useRef(mine)
   mineRef.current = mine
 
-  // Look for new songs in the choir's Drive folder once per app start.
+  // Look for new songs in the choir's Drive folder once per app start, and ask before downloading them.
+  const [offer, setOffer] = useState<{ files: SourceFile[]; songs: { name: string; isNew: boolean }[] } | null>(null)
+  const [fetching, setFetching] = useState<{ msg: string; share: number } | null>(null)
+  const refineLater = () => {
+    syncing.current = false
+    void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
+  }
   useEffect(() => {
-    takeLinkedDrive() // Home does the fetching itself, so a shared link needs no extra import.
+    takeLinkedDrive() // Home checks the folder itself, so a shared link needs no extra import.
     if (checkedDrive || !DRIVE_KEY || !settings.driveUrl || !navigator.onLine) return
     checkedDrive = true
     syncing.current = true
     void (async () => {
       try {
         const files = await listDriveFolder(settings.driveUrl)
-        const added = await importSources(files, (m) => setSyncMsg(m))
-        setSyncMsg(added.length ? `${added.length} ny${added.length === 1 ? '' : 'a'} låt${added.length === 1 ? '' : 'ar'} från Drive!` : '')
+        const news = await songsToFetch(files)
+        if (news.length) return setOffer({ files, songs: news })
       } catch {
-        setSyncMsg('')
-      } finally {
-        syncing.current = false
-        void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
+        /* offline or Drive unavailable: try again next start */
       }
+      refineLater()
     })()
   }, [settings.driveUrl])
+
+  const fetchOffer = async () => {
+    if (!offer) return
+    setFetching({ msg: 'Hämtar…', share: 0 })
+    let n = 0
+    let err = ''
+    try {
+      n = (await importSources(offer.files, (msg, done, total) => setFetching({ msg, share: done / total }))).length
+    } catch (e) {
+      n = e instanceof ImportError ? e.imported.length : 0
+      err = e instanceof Error ? e.message : String(e)
+    }
+    setFetching(null)
+    setOffer(null)
+    setSyncMsg(err || (n ? `${n} ${n === 1 ? 'låt' : 'låtar'} hämtade från Drive!` : ''))
+    refineLater()
+  }
 
   // Time the lines of your voices with the speech model, in the background.
   useEffect(() => {
@@ -190,11 +212,61 @@ export default function Home() {
                 <button className="btn-soft flex-1 py-2" disabled={!p} onClick={() => nav.go({ name: 'song', songId: s.id })}>
                   Textträning
                 </button>
+                <button className="btn-soft flex-1 py-2" onClick={() => nav.go({ name: 'read', songId: s.id })}>
+                  Körrep
+                </button>
               </div>
             </li>
           )
         })}
       </ul>
+
+      <Sheet
+        open={!!offer}
+        onClose={() => {
+          if (fetching) return
+          setOffer(null)
+          refineLater()
+        }}
+      >
+        {offer && (
+          <div className="space-y-3">
+            <p className="text-lg font-black">
+              {offer.songs.length === 1 ? 'Det har kommit nytt i körens mapp' : `${offer.songs.length} låtar är nya eller ändrade i körens mapp`}
+            </p>
+            <ul className="space-y-1">
+              {offer.songs.map((x) => (
+                <li key={x.name} className="flex items-center gap-2 font-bold">
+                  <span>🎵</span>
+                  <span className="flex-1">{x.name}</span>
+                  <span className="text-xs font-semibold text-gray-500">{x.isNew ? 'Ny' : 'Uppdaterad'}</span>
+                </li>
+              ))}
+            </ul>
+            {fetching ? (
+              <div className="space-y-2" aria-live="polite">
+                <p className="text-sm font-bold">{fetching.msg}</p>
+                <Bar value={fetching.share} />
+              </div>
+            ) : (
+              <div className="flex gap-2 pt-1">
+                <button
+                  className="btn-ghost flex-1"
+                  onClick={() => {
+                    setOffer(null)
+                    refineLater()
+                  }}
+                >
+                  Inte nu
+                </button>
+                <button className="btn-primary flex-1" onClick={fetchOffer}>
+                  Hämta
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </Sheet>
 
       <Sheet open={voiceSheet} onClose={() => setVoiceSheet(false)}>
         <p className="mb-3 text-lg font-black">Mina stämmor</p>
