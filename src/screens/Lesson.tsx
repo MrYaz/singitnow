@@ -9,6 +9,7 @@ import type { Line, Song } from '../lib/types'
 import { useNav, type LessonItem, type LessonTarget } from '../nav'
 import { useSettings } from '../settings'
 import { Bar, LineText } from '../components/ui'
+import { withName } from '../lib/cheer'
 import { shortVoice, sortVoices } from '../lib/names'
 
 const PRAISE = ['Snyggt!', 'Bra jobbat!', 'Toppen!', 'Så ska det låta!', 'Wow!', 'Helt rätt!']
@@ -63,7 +64,7 @@ export default function Lesson({ title, items, level }: { title: string; items: 
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
         <div className="pop text-7xl">{share > 0.8 ? '🏆' : share > 0.5 ? '🌟' : '💜'}</div>
-        <h1 className="text-3xl font-black text-brand-700">{share > 0.8 ? 'Strålande!' : share > 0.5 ? 'Bra jobbat!' : 'Bra kämpat!'}</h1>
+        <h1 className="text-3xl font-black text-brand-700">{withName(share > 0.8 ? 'Strålande!' : share > 0.5 ? 'Bra jobbat!' : 'Bra kämpat!', settings.name, 0)}</h1>
         <p className="text-gray-600">
           {!level
             ? 'Dagens repetition är klar.'
@@ -140,15 +141,16 @@ export default function Lesson({ title, items, level }: { title: string; items: 
       <main className="flex flex-1 flex-col px-5 pt-3">
         <ExerciseView key={idx} ex={it.ex} song={song} voice={it.voice} silent={silent} hear={hear} mixer={mixer} answered={result !== null} onResult={finish} />
       </main>
-      <Footer result={result} onNext={next} seed={idx} />
+      <Footer result={result} onNext={next} seed={idx} name={settings.name} />
     </div>
   )
 }
 
-function Footer({ result, onNext, seed }: { result: Outcome | null; onNext: () => void; seed: number }) {
+function Footer({ result, onNext, seed, name }: { result: Outcome | null; onNext: () => void; seed: number; name: string }) {
   if (!result) return null
   const good = result.grade === null || result.grade >= Rating.Good
-  const text = result.grade === null ? 'Fint!' : good ? PRAISE[seed % PRAISE.length] : KIND[seed % KIND.length]
+  const base = result.grade === null ? 'Fint!' : good ? PRAISE[seed % PRAISE.length] : KIND[seed % KIND.length]
+  const text = good ? withName(base, name, seed) : base
   return (
     <div className={`pop sticky bottom-0 space-y-3 px-5 pt-4 pb-[max(env(safe-area-inset-bottom),20px)] ${good ? 'bg-good-100' : 'bg-warm-100'}`}>
       <p className={`text-xl font-black ${good ? 'text-good-600' : 'text-amber-700'}`}>{text}</p>

@@ -53,3 +53,15 @@ describe('groupSongs', () => {
     expect(g.find((x) => x.folder === 'Fix you')!.files).toHaveLength(3)
   })
 })
+
+import { driveFolderId } from './sources'
+describe('driveFolderId', () => {
+  it('cleans pasted links', () => {
+    const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345'
+    expect(driveFolderId(` https://drive.google.com/drive/folders/${id}?usp=sharing \n`)).toBe(id)
+    expect(driveFolderId(`https://drive.google.com/drive/u/0/folders/${id}`)).toBe(id)
+    expect(driveFolderId(`https://drive.google.com/open?id=${id}`)).toBe(id)
+    expect(driveFolderId(`https://drive.google.com/drive/folders/${id.slice(0, 15)} ${id.slice(15)}`)).toBe(id)
+    expect(driveFolderId('hej')).toBeNull()
+  })
+})
