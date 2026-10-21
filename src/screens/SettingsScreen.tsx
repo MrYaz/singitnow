@@ -4,7 +4,7 @@ import { db } from '../lib/db'
 import { saveSettings } from '../lib/learn'
 import { sortVoices } from '../lib/names'
 import { importSources } from '../lib/importer'
-import { DRIVE_KEY, listDriveFolder } from '../lib/sources'
+import { DRIVE_KEY, listDriveFolder, shareLink } from '../lib/sources'
 import { useNav } from '../nav'
 import { useSettings } from '../settings'
 import { ImportPanel } from '../components/ImportPanel'
@@ -93,6 +93,25 @@ export default function SettingsScreen() {
               }}
             >
               Leta efter nya låtar i Drive
+            </button>
+          )}
+          {DRIVE_KEY && shareLink(settings.driveUrl) && (
+            <button
+              className="btn-ghost w-full"
+              onClick={async () => {
+                const url = shareLink(settings.driveUrl)!
+                try {
+                  if (navigator.share) await navigator.share({ title: 'SingItNow', text: 'Öva på körens låtar:', url })
+                  else {
+                    await navigator.clipboard.writeText(url)
+                    setMsg('Länken är kopierad. Den öppnar appen med körens låtar.')
+                  }
+                } catch {
+                  /* cancelled */
+                }
+              }}
+            >
+              Dela appen med kören
             </button>
           )}
           <ul className="space-y-2">

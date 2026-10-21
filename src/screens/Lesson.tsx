@@ -28,8 +28,8 @@ export default function Lesson({ title, items, level }: { title: string; items: 
   const [stats, setStats] = useState({ good: 0, total: 0 })
   const [silent, setSilent] = useState(settings.silent)
   const mixer = useRef(new Mixer()).current
-  /** A file chosen to listen to instead of the exercise's default. */
-  const [hear, setHear] = useState<string | null>(null)
+  /** What to listen to: 'mine' (the lesson's voice), 'alla', 'musik' or a voice name. Resolved per song, since a lesson can span songs. */
+  const [hear, setHear] = useState<string>('mine')
 
   useEffect(() => () => mixer.stop(), [mixer])
 
@@ -132,14 +132,21 @@ export default function Lesson({ title, items, level }: { title: string; items: 
           song={song}
           voice={it.voice}
           value={hear}
-          onChange={(v) => {
-            mixer.stop()
+          onChange={async (v) => {
             setHear(v)
+            // Switch voice without stopping: carry on from the same spot to the same end.
+            const file = hearFile(song, it.voice, v)
+            if (!mixer.playing || !file) return
+            const from = mixer.time
+            const to = mixer.until
+            await mixer.setTracks([file])
+            mixer.setLevel(file, 1)
+            if (to === undefined || to > from + 0.1) await mixer.play({ from, to })
           }}
         />
       )}
       <main className="flex flex-1 flex-col px-5 pt-3">
-        <ExerciseView key={idx} ex={it.ex} song={song} voice={it.voice} silent={silent} hear={hear} mixer={mixer} answered={result !== null} onResult={finish} />
+        <ExerciseView key={idx} ex={it.ex} song={song} voice={it.voice} silent={silent} hear={hearFile(song, it.voice, hear)} hearLabel={hearLabel(song, it.voice, hear)} mixer={mixer} answered={result !== null} onResult={finish} />
       </main>
       <Footer result={result} onNext={next} seed={idx} name={settings.name} />
     </div>
@@ -166,27 +173,44 @@ interface ExProps {
   song: Song
   voice: string
   silent: boolean
-  /** File to listen to instead of the default one, if any. */
-  hear: string | null
+  /** The file chosen in "Lyssna på", and its name. */
+  hear: string | undefined
+  hearLabel: string
   mixer: Mixer
   answered: boolean
   onResult: (o: Outcome) => void
 }
 
+/** The file to play for a listening choice. ALLA falls back to your own voice when a song has no ALLA file. */
+function hearFile(song: Song, voice: string, hear: string): string | undefined {
+  if (hear === 'alla') return song.allaFileId ?? song.voices[voice]?.audioFileId
+  if (hear === 'musik') return song.musikFileId ?? song.voices[voice]?.audioFileId
+  return (song.voices[hear] ?? song.voices[voice])?.audioFileId
+}
+
+function hearLabel(song: Song, voice: string, hear: string): string {
+  if (hear === 'alla' && song.allaFileId) return 'ALLA'
+  if (hear === 'musik' && song.musikFileId) return 'Musik'
+  return song.voices[hear] ? hear : voice
+}
+
 /** Lets you listen to any voice (or ALLA) while you practise. */
-function HearPicker({ song, voice, value, onChange }: { song: Song; voice: string; value: string | null; onChange: (v: string | null) => void }) {
-  const opts: { id: string | null; label: string }[] = [{ id: null, label: 'Auto' }]
-  for (const v of sortVoices(Object.keys(song.voices))) opts.push({ id: song.voices[v].audioFileId, label: shortVoice(v) + (v === voice ? ' ★' : '') })
-  if (song.allaFileId) opts.push({ id: song.allaFileId, label: 'ALLA' })
-  if (song.musikFileId) opts.push({ id: song.musikFileId, label: 'Musik' })
+function HearPicker({ song, voice, value, onChange }: { song: Song; voice: string; value: string; onChange: (v: string) => void }) {
+  const opts: { id: string; label: string }[] = []
+  if (song.allaFileId) opts.push({ id: 'alla', label: 'ALLA' })
+  for (const v of sortVoices(Object.keys(song.voices))) opts.push({ id: v, label: shortVoice(v) + (v === voice ? ' ★' : '') })
+  if (song.musikFileId) opts.push({ id: 'musik', label: 'Musik' })
+  // What is actually playing, after falling back for songs without ALLA or Musik.
+  const sel = (value === 'alla' && song.allaFileId) || (value === 'musik' && song.musikFileId) ? value : song.voices[value] ? value : voice
+  const isOn = (o: { id: string }) => o.id === sel
   return (
     <div className="flex flex-wrap items-center gap-1.5 px-5 pt-2" role="group" aria-label="Lyssna på">
       <span className="text-xs font-bold text-gray-500">Lyssna på</span>
       {opts.map((o) => (
         <button
-          key={o.label}
-          aria-pressed={value === o.id}
-          className={`rounded-lg px-2 py-1 text-xs font-black ${value === o.id ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+          key={o.id}
+          aria-pressed={isOn(o)}
+          className={`rounded-lg px-2 py-1 text-xs font-black ${isOn(o) ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'}`}
           onClick={() => onChange(o.id)}
         >
           {o.label}
@@ -196,7 +220,7 @@ function HearPicker({ song, voice, value, onChange }: { song: Song; voice: strin
   )
 }
 
-function useClips(song: Song, voice: string, mixer: Mixer, silent: boolean, hear: string | null) {
+function useClips(song: Song, voice: string, mixer: Mixer, silent: boolean, hear: string | undefined) {
   const track = song.voices[voice]
   const [playing, setPlaying] = useState(false)
   useEffect(() => {
@@ -267,7 +291,7 @@ function PlayButton({ onClick, playing, label = 'Lyssna' }: { onClick: () => voi
   )
 }
 
-function Listen({ ex, song, voice, silent, hear, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'listen' }> }) {
+function Listen({ ex, song, voice, silent, hear, hearLabel, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'listen' }> }) {
   const clips = useClips(song, voice, mixer, silent, hear)
   const sec = song.voices[voice].sections[ex.section]
   const [t, setT] = useState(0)
@@ -284,10 +308,10 @@ function Listen({ ex, song, voice, silent, hear, mixer, answered, onResult }: Ex
     if (!silent) void clips.playSection(ex.section, ex.track)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const isAlla = ex.track === 'alla'
+  const isAlla = hearLabel === 'ALLA'
   return (
     <>
-      <Prompt>{silent ? 'Läs igenom delen. Vad handlar den om?' : hear ? 'Lyssna och följ med i texten' : isAlla ? 'Lyssna på ALLA och följ med i texten' : `Lyssna på ${voice} och följ med`}</Prompt>
+      <Prompt>{silent ? 'Läs igenom delen. Vad handlar den om?' : `Lyssna på ${hearLabel} och följ med i texten`}</Prompt>
       <div className="card space-y-2 text-lg leading-relaxed">
         {sec.lines.map((l, i) => {
           const on = clips.playing && t >= (l.start ?? 0) - 0.1 && t < (l.end ?? 0) + 0.2

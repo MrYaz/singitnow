@@ -5,7 +5,7 @@ import { Mixer, unlockAudio } from '../lib/audio/engine'
 import { shortVoice, sortVoices, pickVoice } from '../lib/names'
 import { useSettings } from '../settings'
 import { refineVoice } from '../lib/refine'
-import { LineText, OthersText, TopBar, fmt } from '../components/ui'
+import { LineText, OthersText, TopBar, fmt, othersVoices } from '../components/ui'
 
 interface Track {
   id: string
@@ -92,6 +92,8 @@ export default function Rehearsal({ songId }: { songId: string }) {
   }
   const toggle = () => (playing ? mixer.stop() : void play(loop ? loop.from : t))
   const loopIt = (from: number, to: number, label: string) => {
+    // A second tap on what is already looping turns the loop off and lets the song play on.
+    if (loop?.label === label) return clearLoop()
     const l = { from: Math.max(0, from), to, label }
     setLoop(l)
     void play(l.from, l)
@@ -145,7 +147,11 @@ export default function Rehearsal({ songId }: { songId: string }) {
                   <button className="text-xs font-black tracking-wide text-brand-600 uppercase" onClick={() => loopIt(st - 0.8, en + 0.6, `Del ${si + 1}`)}>
                     🔁 Del {si + 1} · {fmt(st).replace(/\.\d$/, '')}
                   </button>
-                  {s.rest && <span className="text-xs text-gray-400">tyst</span>}
+                  {s.rest && (
+                    <span className="text-xs text-gray-400">
+                      tyst{othersVoices(s.others).length > 0 && ` (${othersVoices(s.others).join(', ')})`}
+                    </span>
+                  )}
                   {s.note && <span className="text-xs text-gray-400 italic">{s.note}</span>}
                 </div>
                 {!hideText &&

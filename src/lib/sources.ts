@@ -34,6 +34,36 @@ export function driveFolderId(url: string): string | null {
   return m ? m[1] : null
 }
 
+export const cleanDriveUrl = (id: string) => `https://drive.google.com/drive/folders/${id}`
+
+let linked = false
+/** Reads a Drive folder from the app's address (?drive=<link or id>) and removes it from the address bar. */
+export function readDriveParam(): string | null {
+  const params = new URLSearchParams(location.search)
+  const raw = params.get('drive')
+  if (raw === null) return null
+  params.delete('drive')
+  const q = params.toString()
+  history.replaceState(null, '', location.pathname + (q ? `?${q}` : '') + location.hash)
+  const id = driveFolderId(raw)
+  if (!id) return null
+  linked = true
+  return cleanDriveUrl(id)
+}
+
+/** True once, if the app was opened with a Drive link, so the import can start by itself. */
+export function takeLinkedDrive(): boolean {
+  const was = linked
+  linked = false
+  return was
+}
+
+/** A link that opens the app with this Drive folder filled in, to share with the choir. */
+export function shareLink(driveUrl: string): string | null {
+  const id = driveFolderId(driveUrl)
+  return id ? `${location.origin}${import.meta.env.BASE_URL}?drive=${id}` : null
+}
+
 /** fetch, with a clear message when the request never reaches Google. */
 async function driveFetch(url: string, tries = 3): Promise<Response> {
   try {

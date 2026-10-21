@@ -70,18 +70,23 @@ export async function refineInBackground(pick: (s: Song) => string | null): Prom
   running = true
   try {
     const failed = new Set<string>()
+    let done = 0
     for (;;) {
       const songs = await db.songs.orderBy('order').toArray()
-      const next = needsRefine(songs, pick).find((x) => !failed.has(`${x.song.id}|${x.voice}`))
+      const left = needsRefine(songs, pick).filter((x) => !failed.has(`${x.song.id}|${x.voice}`))
+      const next = left[0]
       if (!next) break
+      // Share is over the whole queue, so the footer shows one steady percentage.
+      const total = done + left.length
       const label = `${next.song.title} (${next.voice})`
-      emit({ text: `Finjusterar synken: ${label}`, share: 0 })
+      emit({ text: label, share: done / total })
       try {
-        await refineVoice(next.song, next.voice, (share) => emit({ text: `Finjusterar synken: ${label}`, share }))
+        await refineVoice(next.song, next.voice, (share) => emit({ text: label, share: (done + share) / total }))
       } catch (e) {
         console.warn('Could not refine', label, e)
         failed.add(`${next.song.id}|${next.voice}`)
       }
+      done++
     }
   } finally {
     running = false
