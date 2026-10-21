@@ -3,10 +3,10 @@ import type { Line, Section } from './types'
 /** Lesson levels for one section (formdel), easiest first. */
 export const LEVELS = [
   { name: 'Lyssna', blurb: 'Lyssna på ALLA och din stämma och följ med i texten.' },
-  { name: 'Välj ord', blurb: 'Välj ordet som saknas.' },
+  { name: 'Saknar ord', blurb: 'Välj ordet som saknas.' },
   { name: 'Ordbrickor', blurb: 'Bygg raden av ordbrickor.' },
   { name: 'Första bokstaven', blurb: 'Bara första bokstaven syns. Sjung raden!' },
-  { name: 'Ordluckor', blurb: 'Orden försvinner, du fyller i.' },
+  { name: 'Minnesluckor', blurb: 'Orden försvinner, du fyller i.' },
   { name: 'Sjung själv', blurb: 'Musiken pausar, du sjunger nästa rad.' },
 ] as const
 

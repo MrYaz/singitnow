@@ -38,7 +38,7 @@ test('import, learn and rehearse', async ({ page }) => {
   await expect(page.getByRole('radio', { name: /Lyssna\s*1\/\d+ delar/ })).toBeVisible()
 
   // Pick another method, then a part.
-  await page.getByRole('radio', { name: /Välj ord/ }).click()
+  await page.getByRole('radio', { name: /Saknar ord/ }).click()
   await page.getByRole('button', { name: 'Del 1', exact: true }).click()
   await expect(page.getByText('Vilket ord saknas?')).toBeVisible()
   await page.screenshot({ path: 'test-results/05-choose.png' })
