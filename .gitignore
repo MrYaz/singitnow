@@ -31,3 +31,4 @@ dist-ssr
 test-material/
 test-results/
 playwright-report/
+.scratch/

@@ -31,6 +31,8 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,mjs,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // The speech model's runtime is large and only needed when analysing, so cache it on first use.
+        runtimeCaching: [{ urlPattern: /\.wasm$/, handler: 'CacheFirst', options: { cacheName: 'singitnow-wasm' } }],
       },
     }),
   ],

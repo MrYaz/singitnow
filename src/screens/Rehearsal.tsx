@@ -4,6 +4,7 @@ import { db } from '../lib/db'
 import { Mixer, unlockAudio } from '../lib/audio/engine'
 import { shortVoice, sortVoices, pickVoice } from '../lib/names'
 import { useSettings } from '../settings'
+import { refineVoice } from '../lib/refine'
 import { LineText, OthersText, TopBar, fmt } from '../components/ui'
 
 interface Track {
@@ -27,6 +28,7 @@ export default function Rehearsal({ songId }: { songId: string }) {
   const [loop, setLoop] = useState<Loop>(null)
   const [showMixer, setShowMixer] = useState(false)
   const [hideText, setHideText] = useState(false)
+  const [refining, setRefining] = useState<number | null>(null)
 
   const tracks: Track[] = useMemo(() => {
     if (!song) return []
@@ -111,6 +113,26 @@ export default function Rehearsal({ songId }: { songId: string }) {
       />
       <main className="flex-1 px-4 pb-64">
         {err && <p className="rounded-2xl bg-warm-100 p-3 text-sm font-semibold">{err}</p>}
+        {song.voices[lyricVoice] && song.voices[lyricVoice].timing !== 'speech' && (
+          <button
+            className="mb-3 w-full rounded-2xl bg-brand-50 p-3 text-left text-sm"
+            disabled={refining !== null}
+            onClick={async () => {
+              setRefining(0)
+              try {
+                await refineVoice(song, lyricVoice, setRefining)
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : String(e))
+              } finally {
+                setRefining(null)
+              }
+            }}
+          >
+            <span className="font-bold text-brand-700">
+              {refining === null ? `Texten för ${lyricVoice} är ungefärligt synkad. Tryck för att finjustera.` : `Finjusterar synken för ${lyricVoice}… ${Math.round(refining * 100)} %`}
+            </span>
+          </button>
+        )}
         <div className="space-y-4">
           {sections.map((s, si) => {
             if (!s.lines.length && !s.rest && !s.note) return null
