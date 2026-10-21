@@ -37,15 +37,37 @@ export function LineText({ line, className = '' }: { line: Line; className?: str
   )
 }
 
-/** What the other voices sing while yours rests: italic and greyed out. */
+const LABEL = /^([\p{L}\d ]{1,12}):\s*(.*)$/u
+const VOICE_NAMES: Record<string, string> = {
+  sop: 'Sopraner', sopran: 'Sopraner', s: 'Sopraner', s1: 'Sopran 1', s2: 'Sopran 2',
+  alt: 'Altar', a: 'Altar', alt1: 'Alt 1', a1: 'Alt 1', alt2: 'Alt 2', a2: 'Alt 2',
+  alla: 'Alla', solist: 'Solist',
+}
+
+/** Full names of the voices that sing while yours rests, from labels like "Sop:" in the PDF. */
+export function othersVoices(others: string[]): string[] {
+  const out: string[] = []
+  for (const o of others) {
+    const m = o.match(LABEL)
+    if (!m) continue
+    const key = m[1].toLowerCase().replace(/\s+/g, '')
+    const name = VOICE_NAMES[key] ?? m[1].trim()
+    if (!out.includes(name)) out.push(name)
+  }
+  return out
+}
+
+/** What the other voices sing while yours rests: italic and greyed out.
+ *  With one voice the name sits in the card heading, so labels are only shown when several voices alternate. */
 export function OthersText({ others }: { others: string[] }) {
+  const showLabels = othersVoices(others).length > 1
   return (
     <div className="space-y-0.5 px-1 text-lg text-gray-400 italic">
       {others.map((o, i) => {
-        const m = o.match(/^([\p{L}\d ]{1,12}):\s*(.*)$/u)
+        const m = o.match(LABEL)
         return (
           <p key={i}>
-            {m && <span className="mr-1 text-xs font-bold not-italic uppercase">{m[1]}</span>}
+            {m && showLabels && <span className="mr-1 text-xs font-bold not-italic">({othersVoices([o])[0]})</span>}
             {m ? m[2] : o}
           </p>
         )
