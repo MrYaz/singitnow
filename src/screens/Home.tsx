@@ -7,6 +7,7 @@ import { pickVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
 import { importSources } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder } from '../lib/sources'
+import { onRefineStatus, refineInBackground } from '../lib/refine'
 import { useNav, type LessonItem } from '../nav'
 import { useSettings } from '../settings'
 import { Bar, Sheet } from '../components/ui'
@@ -34,6 +35,10 @@ export default function Home() {
   const [voiceSheet, setVoiceSheet] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const syncing = useRef(false)
+  const [refine, setRefine] = useState<{ text: string; share: number } | null>(null)
+  useEffect(() => onRefineStatus(setRefine), [])
+  const mineRef = useRef(mine)
+  mineRef.current = mine
 
   // Look for new songs in the choir's Drive folder once per app start.
   useEffect(() => {
@@ -49,9 +54,16 @@ export default function Home() {
         setSyncMsg('')
       } finally {
         syncing.current = false
+        void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
       }
     })()
   }, [settings.driveUrl])
+
+  // Time the lines of your voices with the speech model, in the background.
+  useEffect(() => {
+    if (syncing.current || !songs?.length) return
+    void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
+  }, [songs, mineKey])
 
   if (!songs || !levels) return null
   const allVoices = sortVoices([...new Set(songs.flatMap((s) => Object.keys(s.voices)))])
@@ -144,6 +156,13 @@ export default function Home() {
       </button>
 
       {syncMsg && <p className="mt-3 rounded-2xl bg-good-100 p-3 text-sm font-bold text-good-600">{syncMsg}</p>}
+      {refine && (
+        <div className="mt-3 rounded-2xl bg-brand-50 p-3 text-sm">
+          <p className="font-bold text-brand-700">{refine.text}</p>
+          <Bar value={refine.share} className="mt-2 h-2" />
+          <p className="mt-1 text-xs text-gray-500">Appen lyssnar efter varje ord så att texten följer sången exakt. Du kan öva under tiden.</p>
+        </div>
+      )}
 
       <h2 className="mt-7 mb-3 text-lg font-black">Låtar</h2>
       <ul className="space-y-3">
