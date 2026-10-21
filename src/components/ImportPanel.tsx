@@ -108,11 +108,19 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
           onChange={(e) => e.target.files?.length && run(async () => fromFileList(e.target.files!))}
         />
       </div>
-      {(busy || msg) && (
-        <div className="card space-y-2" aria-live="polite">
+      {busy && (
+        // Over the page while importing, so you see it has started without scrolling.
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 px-4" role="dialog" aria-modal="true" aria-label="Hämtar låtarna">
+          <div className="pop card w-full max-w-md space-y-2 shadow-xl" aria-live="polite">
+            <p className="font-bold">{msg}</p>
+            <Bar value={pct} />
+            <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma för att hitta raderna. Det tar en liten stund per låt.</p>
+          </div>
+        </div>
+      )}
+      {!busy && msg && (
+        <div className="card" aria-live="polite">
           <p className="font-bold">{msg}</p>
-          {busy && <Bar value={pct} />}
-          {busy && <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma för att hitta raderna. Det tar en liten stund per låt.</p>}
         </div>
       )}
       {err && <p className="rounded-2xl bg-warm-100 p-3 text-sm font-semibold text-amber-900">{err}</p>}
