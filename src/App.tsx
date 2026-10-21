@@ -28,6 +28,10 @@ export default function App() {
         setStack((st) => [...st, s])
         window.scrollTo(0, 0)
       },
+      replace: (s: Screen) => {
+        setStack((st) => [...st.slice(0, -1), s])
+        window.scrollTo(0, 0)
+      },
       back: () => setStack((st) => (st.length > 1 ? st.slice(0, -1) : st)),
     }),
     [],
@@ -62,7 +66,7 @@ export default function App() {
         body = <SongPath songId={screen.songId} />
         break
       case 'lesson':
-        body = <Lesson key={stack.length} title={screen.title} items={screen.items} level={screen.level} />
+        body = <Lesson key={`${stack.length}:${screen.title}`} title={screen.title} items={screen.items} level={screen.level} />
         break
       case 'rehearsal':
         body = <Rehearsal songId={screen.songId} />

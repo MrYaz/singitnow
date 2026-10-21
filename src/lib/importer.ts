@@ -87,12 +87,16 @@ export async function importSources(sources: SourceFile[], onProgress: Progress,
       if (lyrics.title.includes(' - ')) title = lyrics.title.split(' - ')[0].trim()
       const voice = await decodeForAnalysis(vf.blob)
       const res = await analyzeInWorker(voice.pcm, music.pcm)
+      // Quick first timing from pauses in the singing; refine.ts improves it later with the speech model.
+      const sections = alignLyrics(lyrics, res.spans, voice.pcm.length / ANALYSIS_RATE)
       voices[vf.voice!] = {
         voice: vf.voice!,
         audioFileId: vf.id,
         pdfFileId: pdf.id,
         title: lyrics.title,
-        sections: alignLyrics(lyrics, res.spans, voice.pcm.length / ANALYSIS_RATE),
+        sections,
+        timing: 'pauses',
+        spans: res.spans,
         activity: res.activity,
         analyzedAt: Date.now(),
       }

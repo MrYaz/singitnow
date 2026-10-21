@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
-import { dueLines, getStreak, levelsFor, saveSettings, todayXP } from '../lib/learn'
-import { LEVELS, learnable, reviewExercise, buildLesson } from '../lib/exercises'
+import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../lib/learn'
+import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
 import { pickVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
 import { importSources } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder } from '../lib/sources'
+import { onRefineStatus, refineInBackground } from '../lib/refine'
 import { useNav, type LessonItem } from '../nav'
 import { useSettings } from '../settings'
 import { Bar, Sheet } from '../components/ui'
@@ -27,13 +28,17 @@ export default function Home() {
     const out: Record<string, Record<number, number>> = {}
     for (const s of songs ?? []) {
       const v = pickVoice(s.voices, mine)
-      out[s.id] = v ? await levelsFor(s.id, v) : {}
+      out[s.id] = v ? await doneFor(s.id, v) : {}
     }
     return out
   }, [songs, mineKey])
   const [voiceSheet, setVoiceSheet] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const syncing = useRef(false)
+  const [refine, setRefine] = useState<{ text: string; share: number } | null>(null)
+  useEffect(() => onRefineStatus(setRefine), [])
+  const mineRef = useRef(mine)
+  mineRef.current = mine
 
   // Look for new songs in the choir's Drive folder once per app start.
   useEffect(() => {
@@ -49,9 +54,16 @@ export default function Home() {
         setSyncMsg('')
       } finally {
         syncing.current = false
+        void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
       }
     })()
   }, [settings.driveUrl])
+
+  // Time the lines of your voices with the speech model, in the background.
+  useEffect(() => {
+    if (syncing.current || !songs?.length) return
+    void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
+  }, [songs, mineKey])
 
   if (!songs || !levels) return null
   const allVoices = sortVoices([...new Set(songs.flatMap((s) => Object.keys(s.voices)))])
@@ -64,19 +76,21 @@ export default function Home() {
     if (!v) return null
     const secs = learnable(v.sections)
     const lv = levels[s.id] ?? {}
-    const done = secs.filter((x) => (lv[x.i] ?? 0) >= LEVELS.length).length
-    const steps = secs.reduce((a, x) => a + Math.min(LEVELS.length, lv[x.i] ?? 0), 0)
-    return { done, total: secs.length, share: secs.length ? steps / (secs.length * LEVELS.length) : 0 }
+    // A learning method counts as done when every part of the song is done with it.
+    const methods = LEVELS.filter((_, m) => secs.length > 0 && secs.every((x) => isDone(lv[x.i], m))).length
+    const steps = secs.reduce((a, x) => a + LEVELS.filter((_, m) => isDone(lv[x.i], m)).length, 0)
+    return { done: methods, total: LEVELS.length, share: secs.length ? steps / (secs.length * LEVELS.length) : 0 }
   }
 
-  // Next thing to learn: the first section that is not finished.
+  // Next thing to learn: the first method not done on every part, at its first part not done.
   const next = (() => {
     for (const s of songs) {
       const vn = voiceOf(s)
       if (!vn) continue
-      for (const { i } of learnable(s.voices[vn].sections)) {
-        const lv = levels[s.id]?.[i] ?? 0
-        if (lv < LEVELS.length) return { song: s, voice: vn, section: i, level: lv }
+      const secs = learnable(s.voices[vn].sections)
+      for (let m = 0; m < LEVELS.length; m++) {
+        const part = secs.find((x) => !isDone(levels[s.id]?.[x.i], m))
+        if (part) return { song: s, voice: vn, section: part.i, level: m }
       }
     }
     return null
@@ -99,14 +113,7 @@ export default function Home() {
 
   const startNext = () => {
     if (!next) return
-    const { voice } = next
-    const sections = next.song.voices[voice].sections
-    nav.go({
-      name: 'lesson',
-      title: `${next.song.title} · Steg ${next.level + 1} av ${LEVELS.length}: ${LEVELS[next.level].name}`,
-      items: buildLesson(sections, next.section, next.level).map((ex) => ({ songId: next.song.id, voice, ex })),
-      level: { songId: next.song.id, voice, section: next.section, level: next.level },
-    })
+    nav.go(lessonFor(next.song, next.voice, next.section, next.level))
   }
 
   return (
@@ -144,6 +151,13 @@ export default function Home() {
       </button>
 
       {syncMsg && <p className="mt-3 rounded-2xl bg-good-100 p-3 text-sm font-bold text-good-600">{syncMsg}</p>}
+      {refine && (
+        <div className="mt-3 rounded-2xl bg-brand-50 p-3 text-sm">
+          <p className="font-bold text-brand-700">{refine.text}</p>
+          <Bar value={refine.share} className="mt-2 h-2" />
+          <p className="mt-1 text-xs text-gray-500">Appen lyssnar efter varje ord så att texten följer sången exakt. Du kan öva under tiden.</p>
+        </div>
+      )}
 
       <h2 className="mt-7 mb-3 text-lg font-black">Låtar</h2>
       <ul className="space-y-3">
@@ -154,13 +168,13 @@ export default function Home() {
               <button className="w-full text-left" onClick={() => nav.go({ name: 'song', songId: s.id })}>
                 <div className="flex items-center gap-2">
                   <p className="flex-1 text-lg font-extrabold">{s.title}</p>
-                  {p && p.total > 0 && p.done === p.total && <span className="text-xl">👑</span>}
+                  {p && p.done === p.total && <span className="text-xl">👑</span>}
                 </div>
                 {p ? (
                   <>
                     <Bar value={p.share} className="mt-2 h-2" />
                     <p className="mt-1 text-xs font-bold text-gray-500">
-                      {p.done} av {p.total} delar klara
+                      {p.done} av {p.total} inlärningssätt klara
                     </p>
                   </>
                 ) : (

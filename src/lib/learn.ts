@@ -22,21 +22,23 @@ export async function dueLines(voices: string[], limit = 12) {
   return rows.sort((a, b) => a.due - b.due).slice(0, limit)
 }
 
-export async function sectionLevel(songId: string, voice: string, s: number) {
-  return (await db.progress.get(sectionKey(songId, voice, s)))?.level ?? 0
-}
+const maskOf = (r: { level: number; done?: number }) => r.done ?? (1 << r.level) - 1
 
-export async function levelsFor(songId: string, voice: string): Promise<Record<number, number>> {
+/** Learning methods done per section, as bit masks (bit m = method m is done). */
+export async function doneFor(songId: string, voice: string): Promise<Record<number, number>> {
   const rows = await db.progress.where('songId').equals(songId).filter((r) => r.voice === voice).toArray()
   const out: Record<number, number> = {}
-  for (const r of rows) out[Number(r.key.split('|')[2])] = r.level
+  for (const r of rows) out[Number(r.key.split('|')[2])] = maskOf(r)
   return out
 }
 
-export async function completeLevel(songId: string, voice: string, s: number, level: number) {
+export const isDone = (mask: number | undefined, method: number) => ((mask ?? 0) >> method) & 1
+
+export async function completeMethod(songId: string, voice: string, s: number, method: number) {
   const key = sectionKey(songId, voice, s)
-  const cur = (await db.progress.get(key))?.level ?? 0
-  await db.progress.put({ key, songId, voice, level: Math.max(cur, level + 1) })
+  const cur = await db.progress.get(key)
+  const done = (cur ? maskOf(cur) : 0) | (1 << method)
+  await db.progress.put({ key, songId, voice, level: Math.max(cur?.level ?? 0, method + 1), done })
 }
 
 // ---- Daily goal and streak -------------------------------------------------

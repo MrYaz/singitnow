@@ -7,7 +7,7 @@ Lär dig körtexterna utantill, en formdel i taget, och öva stämmorna. Byggd f
 ## Vad den gör
 
 - **Import:** klistra in länken till körens Google Drive-mapp, eller välj filer/mapp. Nya låtar i Drive-mappen hämtas automatiskt.
-- **Analys i telefonen:** läser text-PDF:erna (rader, tidsstämplar, färgmarkerad stämsång) och hittar var varje rad sjungs genom att jämföra stämfilen med Musik-filen. Ingen server, inget konto.
+- **Analys i telefonen:** läser text-PDF:erna (rader, tidsstämplar, färgmarkerad stämsång) och hittar var varje rad sjungs genom att jämföra stämfilen med Musik-filen. Sedan finjusterar en liten taligenkänningsmodell (NeMo Conformer CTC, körs i webbläsaren med onnxruntime-web) tiderna ord för ord för dina stämmor, i bakgrunden. Ingen server, inget konto.
 - **Lektioner per formdel:** lyssna, välj ord, ordbrickor, första bokstaven, tonas bort, sjung själv. Rader du missar kommer tillbaka i Dagens pass (spaced repetition med FSRS).
 - **Stämrep:** soloknappar per stämma (S, S1, S2, A1, A2, ALLA, Musik), mixer, loopa en rad eller en formdel.
 - **Konsertläge:** hela låten med bara komp och ingen text.
@@ -36,6 +36,7 @@ Google Drive-importen kräver en API-nyckel i miljövariabeln `VITE_GOOGLE_API_K
 ## Struktur
 
 - `src/lib/pdf/` – PDF-läsning (pdf.js) och tolkning av Sing Its textblad
-- `src/lib/audio/` – aktivitetsanalys, radmatchning, ljudmotor (Web Audio)
+- `src/lib/audio/` – aktivitetsanalys, radmatchning, talmodell (`fbank.ts`, `ctc.ts`, `ctcWorker.ts`), ljudmotor (Web Audio)
+- `public/models/` – talmodellen (se README där)
 - `src/lib/exercises.ts`, `src/lib/learn.ts` – övningar, repetition, streak
 - `src/screens/` – skärmarna
