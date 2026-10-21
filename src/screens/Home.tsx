@@ -183,10 +183,10 @@ export default function Home() {
                 )}
               </button>
               <div className="mt-3 flex gap-2">
-                <button className="btn-ghost flex-1 py-2" onClick={() => nav.go({ name: 'rehearsal', songId: s.id })}>
+                <button className="btn-soft flex-1 py-2" onClick={() => nav.go({ name: 'rehearsal', songId: s.id })}>
                   Stämrep
                 </button>
-                <button className="btn-primary flex-1 py-2" disabled={!p} onClick={() => nav.go({ name: 'song', songId: s.id })}>
+                <button className="btn-soft flex-1 py-2" disabled={!p} onClick={() => nav.go({ name: 'song', songId: s.id })}>
                   Textträning
                 </button>
               </div>
