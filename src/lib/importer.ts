@@ -49,8 +49,10 @@ export async function importSources(sources: SourceFile[], onProgress: Progress,
         return !e || e.modified !== f.file.modified || e.size !== f.file.size
       }),
     )
+    const changedIds = new Set(g.files.filter((_, k) => changed[k]).map((f) => f.file.id))
     const missingVoices = g.files.some((f) => f.kind === 'voice' && f.voice && !prev?.voices[f.voice])
-    if (prev && !force && !changed.some(Boolean) && !missingVoices && (prev as Song & { v?: number }).v === ANALYSIS_VERSION) {
+    const goneVoices = Object.keys(prev?.voices ?? {}).some((v) => !g.files.some((f) => f.kind === 'voice' && f.voice === v))
+    if (prev && !force && !changed.some(Boolean) && !missingVoices && !goneVoices && (prev as Song & { v?: number }).v === ANALYSIS_VERSION) {
       step++
       continue
     }
@@ -65,13 +67,21 @@ export async function importSources(sources: SourceFile[], onProgress: Progress,
     const alla = stored.find((s) => s.kind === 'alla')
     onProgress(`Lyssnar på ${name}`, step + 0.1, total)
     const music = await decodeForAnalysis(musik.blob)
-    const voices: Record<string, VoiceTrack> = { ...(prev?.voices ?? {}) }
+    // Rebuilt from the current files only, so voices removed from the folder disappear.
+    const voices: Record<string, VoiceTrack> = {}
     const voiceFiles = stored.filter((s) => s.kind === 'voice' && s.voice)
-    let title = name
+    let title = prev?.title ?? name
     for (let i = 0; i < voiceFiles.length; i++) {
       const vf = voiceFiles[i]
       const pdf = stored.find((s) => s.kind === 'pdf' && s.voice === vf.voice)
       if (!pdf) continue
+      const old = prev?.voices[vf.voice!]
+      const same = old && old.audioFileId === vf.id && old.pdfFileId === pdf.id && !changedIds.has(vf.id) && !changedIds.has(pdf.id)
+      if (same && !force && (prev as Song & { v?: number }).v === ANALYSIS_VERSION) {
+        // Unchanged files: keep the analysis, including any timings adjusted by hand.
+        voices[vf.voice!] = old
+        continue
+      }
       onProgress(`Analyserar ${name}: ${vf.voice}`, step + 0.2 + (0.8 * i) / voiceFiles.length, total)
       const lyrics = await readLyricsPdf(pdf.blob)
       if (lyrics.title.includes(' - ')) title = lyrics.title.split(' - ')[0].trim()
@@ -86,6 +96,10 @@ export async function importSources(sources: SourceFile[], onProgress: Progress,
         activity: res.activity,
         analyzedAt: Date.now(),
       }
+    }
+    if (!Object.keys(voices).length) {
+      step++
+      continue
     }
     const song: Song & { v: number } = {
       id: g.id,

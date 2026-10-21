@@ -35,12 +35,12 @@ export function groupSongs(files: SourceFile[]): SongGroup[] {
   if (withFolders) {
     for (const m of musik) {
       const dir = m.file.path
-      const key = dir.join('/')
       const folder = dir.at(-1)!
-      const inside = known.filter((g) => g.file.path.join('/').startsWith(key) && g.file.path.length >= dir.length)
+      // Same leading folders, compared segment by segment ("Song" must not match "Song reprise").
+      const inside = known.filter((g) => g.file.path.length >= dir.length && dir.every((d, i) => g.file.path[i] === d))
       groups.push({ id: slug(folderTitle(folder)), folder, order: folderOrder(folder), files: inside })
     }
-    return groups.sort((a, b) => a.order - b.order || a.folder.localeCompare(b.folder))
+    return groups.filter(usable).sort((a, b) => a.order - b.order || a.folder.localeCompare(b.folder))
   }
 
   // Flat list: group audio by song name, then attach each PDF to the closest song.
@@ -69,7 +69,15 @@ export function groupSongs(files: SourceFile[]): SongGroup[] {
     }
     if (best && score > 0.5) best.files.push(p)
   }
-  return list.filter((g) => g.files.some((f) => f.kind === 'musik'))
+  return list.filter(usable)
+}
+
+/** A song needs backing music and at least one voice with its lyric PDF. */
+function usable(g: SongGroup): boolean {
+  return (
+    g.files.some((f) => f.kind === 'musik') &&
+    g.files.some((f) => f.kind === 'voice' && g.files.some((p) => p.kind === 'pdf' && p.voice === f.voice))
+  )
 }
 
 export { folderTitle }
