@@ -6,7 +6,7 @@ export const LEVELS = [
   { name: 'Välj ord', blurb: 'Välj ordet som saknas.' },
   { name: 'Ordbrickor', blurb: 'Bygg raden av ordbrickor.' },
   { name: 'Första bokstaven', blurb: 'Bara första bokstaven syns. Sjung raden!' },
-  { name: 'Tonas bort', blurb: 'Orden försvinner, du fyller i.' },
+  { name: 'Ordluckor', blurb: 'Orden försvinner, du fyller i.' },
   { name: 'Sjung själv', blurb: 'Musiken pausar, du sjunger nästa rad.' },
 ] as const
 
@@ -149,3 +149,15 @@ export function reviewExercise(sections: Section[], s: number, line: number, rep
 /** Sections that have lyrics to learn for this voice. */
 export const learnable = (sections: Section[]) =>
   sections.map((s, i) => ({ s, i })).filter((x) => x.s.lines.length > 0)
+
+/** The screen for practising one section of a song with one learning method. */
+export function lessonFor(song: { id: string; title: string; voices: Record<string, { sections: Section[] }> }, voice: string, section: number, level: number) {
+  const sections = song.voices[voice].sections
+  const part = learnable(sections).findIndex((x) => x.i === section) + 1
+  return {
+    name: 'lesson' as const,
+    title: `${song.title} · ${LEVELS[level].name} · del ${part}`,
+    items: buildLesson(sections, section, level).map((ex) => ({ songId: song.id, voice, ex })),
+    level: { songId: song.id, voice, section, level },
+  }
+}

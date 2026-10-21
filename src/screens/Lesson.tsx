@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Grade } from 'ts-fsrs'
 import { db } from '../lib/db'
-import { addXP, completeLevel, Rating, rateLine } from '../lib/learn'
-import { LEVELS, bare, initials, tokens, type Exercise } from '../lib/exercises'
+import { addXP, completeMethod, Rating, rateLine } from '../lib/learn'
+import { LEVELS, bare, initials, learnable, lessonFor, tokens, type Exercise } from '../lib/exercises'
 import { Mixer, unlockAudio } from '../lib/audio/engine'
 import type { Line, Song } from '../lib/types'
-import { useNav, type LessonItem } from '../nav'
+import { useNav, type LessonItem, type LessonTarget } from '../nav'
 import { useSettings } from '../settings'
 import { Bar, LineText } from '../components/ui'
 import { shortVoice, sortVoices } from '../lib/names'
@@ -17,7 +17,7 @@ const XP_PER = 10
 
 type Outcome = { grade: Grade } | { grade: null }
 
-export default function Lesson({ title, items, level }: { title: string; items: LessonItem[]; level?: { songId: string; voice: string; section: number; level: number } }) {
+export default function Lesson({ title, items, level }: { title: string; items: LessonItem[]; level?: LessonTarget }) {
   const nav = useNav()
   const { settings } = useSettings()
   const songIds = useMemo(() => [...new Set(items.map((i) => i.songId))], [items])
@@ -49,17 +49,28 @@ export default function Lesson({ title, items, level }: { title: string; items: 
   const next = async () => {
     mixer.stop()
     setResult(null)
-    if (idx + 1 >= items.length && level) await completeLevel(level.songId, level.voice, level.section, level.level)
+    if (idx + 1 >= items.length && level) await completeMethod(level.songId, level.voice, level.section, level.level)
     setIdx((i) => i + 1)
   }
 
   if (done) {
     const share = stats.total ? stats.good / stats.total : 1
+    // The next part of the song, practised the same way.
+    const lvSong = level ? songMap.get(level.songId) : undefined
+    const parts = lvSong ? learnable(lvSong.voices[level!.voice]?.sections ?? []) : []
+    const at = level ? parts.findIndex((x) => x.i === level.section) : -1
+    const nextPart = at >= 0 ? parts[at + 1] : undefined
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
         <div className="pop text-7xl">{share > 0.8 ? '🏆' : share > 0.5 ? '🌟' : '💜'}</div>
         <h1 className="text-3xl font-black text-brand-700">{share > 0.8 ? 'Strålande!' : share > 0.5 ? 'Bra jobbat!' : 'Bra kämpat!'}</h1>
-        <p className="text-gray-600">{level ? `Steget "${LEVELS[level.level].name}" är klart.` : 'Dagens repetition är klar.'}</p>
+        <p className="text-gray-600">
+          {!level
+            ? 'Dagens repetition är klar.'
+            : nextPart
+              ? `Del ${at + 1} av ${parts.length} är klar med ${LEVELS[level.level].name.toLowerCase()}.`
+              : `Sista delen är klar med ${LEVELS[level.level].name.toLowerCase()}!`}
+        </p>
         <div className="flex gap-3">
           <div className="card min-w-28">
             <p className="text-xs font-bold text-warm-500 uppercase">XP</p>
@@ -70,9 +81,20 @@ export default function Lesson({ title, items, level }: { title: string; items: 
             <p className="text-2xl font-black">{Math.round(share * 100)}%</p>
           </div>
         </div>
-        <button className="btn-primary mt-4 w-full max-w-xs" onClick={nav.back}>
-          Fortsätt
-        </button>
+        {level && lvSong && nextPart ? (
+          <div className="mt-4 flex w-full max-w-xs flex-col gap-3">
+            <button className="btn-primary" onClick={() => nav.replace(lessonFor(lvSong, level.voice, nextPart.i, level.level))}>
+              Nästa del →
+            </button>
+            <button className="btn-ghost" onClick={nav.back}>
+              Tillbaka till låten
+            </button>
+          </div>
+        ) : (
+          <button className="btn-primary mt-4 w-full max-w-xs" onClick={nav.back}>
+            {level ? 'Tillbaka till låten' : 'Fortsätt'}
+          </button>
+        )}
       </main>
     )
   }

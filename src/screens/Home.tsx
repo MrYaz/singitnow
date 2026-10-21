@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
-import { dueLines, getStreak, levelsFor, saveSettings, todayXP } from '../lib/learn'
-import { LEVELS, learnable, reviewExercise, buildLesson } from '../lib/exercises'
+import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../lib/learn'
+import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
 import { pickVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
 import { importSources } from '../lib/importer'
@@ -28,7 +28,7 @@ export default function Home() {
     const out: Record<string, Record<number, number>> = {}
     for (const s of songs ?? []) {
       const v = pickVoice(s.voices, mine)
-      out[s.id] = v ? await levelsFor(s.id, v) : {}
+      out[s.id] = v ? await doneFor(s.id, v) : {}
     }
     return out
   }, [songs, mineKey])
@@ -76,19 +76,21 @@ export default function Home() {
     if (!v) return null
     const secs = learnable(v.sections)
     const lv = levels[s.id] ?? {}
-    const done = secs.filter((x) => (lv[x.i] ?? 0) >= LEVELS.length).length
-    const steps = secs.reduce((a, x) => a + Math.min(LEVELS.length, lv[x.i] ?? 0), 0)
-    return { done, total: secs.length, share: secs.length ? steps / (secs.length * LEVELS.length) : 0 }
+    // A learning method counts as done when every part of the song is done with it.
+    const methods = LEVELS.filter((_, m) => secs.length > 0 && secs.every((x) => isDone(lv[x.i], m))).length
+    const steps = secs.reduce((a, x) => a + LEVELS.filter((_, m) => isDone(lv[x.i], m)).length, 0)
+    return { done: methods, total: LEVELS.length, share: secs.length ? steps / (secs.length * LEVELS.length) : 0 }
   }
 
-  // Next thing to learn: the first section that is not finished.
+  // Next thing to learn: the first method not done on every part, at its first part not done.
   const next = (() => {
     for (const s of songs) {
       const vn = voiceOf(s)
       if (!vn) continue
-      for (const { i } of learnable(s.voices[vn].sections)) {
-        const lv = levels[s.id]?.[i] ?? 0
-        if (lv < LEVELS.length) return { song: s, voice: vn, section: i, level: lv }
+      const secs = learnable(s.voices[vn].sections)
+      for (let m = 0; m < LEVELS.length; m++) {
+        const part = secs.find((x) => !isDone(levels[s.id]?.[x.i], m))
+        if (part) return { song: s, voice: vn, section: part.i, level: m }
       }
     }
     return null
@@ -111,14 +113,7 @@ export default function Home() {
 
   const startNext = () => {
     if (!next) return
-    const { voice } = next
-    const sections = next.song.voices[voice].sections
-    nav.go({
-      name: 'lesson',
-      title: `${next.song.title} · Steg ${next.level + 1} av ${LEVELS.length}: ${LEVELS[next.level].name}`,
-      items: buildLesson(sections, next.section, next.level).map((ex) => ({ songId: next.song.id, voice, ex })),
-      level: { songId: next.song.id, voice, section: next.section, level: next.level },
-    })
+    nav.go(lessonFor(next.song, next.voice, next.section, next.level))
   }
 
   return (
@@ -173,13 +168,13 @@ export default function Home() {
               <button className="w-full text-left" onClick={() => nav.go({ name: 'song', songId: s.id })}>
                 <div className="flex items-center gap-2">
                   <p className="flex-1 text-lg font-extrabold">{s.title}</p>
-                  {p && p.total > 0 && p.done === p.total && <span className="text-xl">👑</span>}
+                  {p && p.done === p.total && <span className="text-xl">👑</span>}
                 </div>
                 {p ? (
                   <>
                     <Bar value={p.share} className="mt-2 h-2" />
                     <p className="mt-1 text-xs font-bold text-gray-500">
-                      {p.done} av {p.total} delar klara
+                      {p.done} av {p.total} inlärningssätt klara
                     </p>
                   </>
                 ) : (

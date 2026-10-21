@@ -16,7 +16,10 @@ export interface SectionProgress {
   key: string
   songId: string
   voice: string
+  /** Older versions: how many steps were done, in order. */
   level: number
+  /** Bit per learning method that is done for this section. */
+  done?: number
 }
 
 export interface KV {
