@@ -28,8 +28,8 @@ export default function Lesson({ title, items, level }: { title: string; items: 
   const [stats, setStats] = useState({ good: 0, total: 0 })
   const [silent, setSilent] = useState(settings.silent)
   const mixer = useRef(new Mixer()).current
-  /** What to listen to: 'alla', 'musik' or a voice name. Resolved per song, since a lesson can span songs. */
-  const [hear, setHear] = useState<string>('alla')
+  /** What to listen to: 'mine' (the lesson's voice), 'alla', 'musik' or a voice name. Resolved per song, since a lesson can span songs. */
+  const [hear, setHear] = useState<string>('mine')
 
   useEffect(() => () => mixer.stop(), [mixer])
 

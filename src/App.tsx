@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './lib/db'
-import { getSettings, type Settings } from './lib/learn'
+import { getSettings, saveSettings, type Settings } from './lib/learn'
+import { readDriveParam } from './lib/sources'
 import { NavContext, type Screen } from './nav'
 import { SettingsContext } from './settings'
 import Home from './screens/Home'
@@ -19,7 +20,12 @@ export default function App() {
   const songCount = useLiveQuery(() => db.songs.count(), [])
 
   useEffect(() => {
-    void getSettings().then(setSettings)
+    void (async () => {
+      // Opened from a shared link with the choir's Drive folder: remember the folder.
+      const drive = readDriveParam()
+      if (drive && drive !== (await getSettings()).driveUrl) await saveSettings({ driveUrl: drive })
+      setSettings(await getSettings())
+    })()
   }, [])
 
   const nav = useMemo(

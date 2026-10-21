@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { importSources } from '../lib/importer'
-import { DRIVE_KEY, fromFileList, driveFolderId, listDriveFolder, type SourceFile } from '../lib/sources'
+import { DRIVE_KEY, cleanDriveUrl, fromFileList, driveFolderId, listDriveFolder, takeLinkedDrive, type SourceFile } from '../lib/sources'
 import { saveSettings } from '../lib/learn'
 import { useSettings } from '../settings'
 import { Bar } from './ui'
@@ -48,12 +48,18 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
       return
     }
     // Keep only the folder id, so extras like ?usp=sharing or spaces never get in the way.
-    const clean = `https://drive.google.com/drive/folders/${id}`
+    const clean = cleanDriveUrl(id)
     setUrl(clean)
     await saveSettings({ driveUrl: clean })
     await reload()
     await run(() => listDriveFolder(clean))
   }
+
+  // Opened from a link with the Drive folder in it: fetch the songs right away.
+  useEffect(() => {
+    if (DRIVE_KEY && settings.driveUrl && takeLinkedDrive()) void fromDrive()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="space-y-4">

@@ -24,8 +24,11 @@ test('import, learn and rehearse', async ({ page }) => {
   await expect(page.getByRole('radiogroup', { name: 'Inlärningssätt' })).toBeVisible()
   await page.screenshot({ path: 'test-results/03-path.png', fullPage: true })
   await page.getByRole('button', { name: 'Del 1', exact: true }).click()
-  await expect(page.getByText(/Lyssna på ALLA/)).toBeVisible()
+  // Your own voice is the default; switching keeps going with the new voice.
+  await expect(page.getByText(/Lyssna på Sopran/)).toBeVisible()
   await expect(page.getByRole('group', { name: 'Lyssna på' })).toBeVisible()
+  await page.getByRole('group', { name: 'Lyssna på' }).getByRole('button', { name: 'ALLA' }).click()
+  await expect(page.getByText(/Lyssna på ALLA/)).toBeVisible()
   await page.screenshot({ path: 'test-results/04-listen.png' })
   await page.getByRole('button', { name: 'Klar' }).click()
   await page.getByRole('button', { name: 'Fortsätt' }).click()

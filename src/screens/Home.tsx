@@ -6,7 +6,7 @@ import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
 import { pickVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
 import { importSources } from '../lib/importer'
-import { DRIVE_KEY, listDriveFolder } from '../lib/sources'
+import { DRIVE_KEY, listDriveFolder, takeLinkedDrive } from '../lib/sources'
 import { onRefineStatus, refineInBackground } from '../lib/refine'
 import { useNav, type LessonItem } from '../nav'
 import { useSettings } from '../settings'
@@ -42,6 +42,7 @@ export default function Home() {
 
   // Look for new songs in the choir's Drive folder once per app start.
   useEffect(() => {
+    takeLinkedDrive() // Home does the fetching itself, so a shared link needs no extra import.
     if (checkedDrive || !DRIVE_KEY || !settings.driveUrl || !navigator.onLine) return
     checkedDrive = true
     syncing.current = true
