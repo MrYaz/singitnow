@@ -60,7 +60,7 @@ export default function Setup() {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <p className="-mt-3 text-xs text-gray-500">Så att appen kan peppa dig. Namnet stannar i din telefon.</p>
+          <p className="-mt-3 text-xs text-gray-500">För en personligare upplevelse. Namnet stannar i din telefon.</p>
           <button className="btn-primary w-full" disabled={!picked.length} onClick={done}>
             Kör igång
           </button>
