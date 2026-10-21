@@ -45,6 +45,16 @@ export default function SettingsScreen() {
           <VoicePicker all={voices} value={settings.voices} cols={3} onChange={(v) => v.length && set({ voices: v })} />
         </section>
         <section className="space-y-3">
+          <h2 className="font-black">Ditt namn</h2>
+          <input
+            className="w-full rounded-2xl border-2 border-brand-100 bg-white px-4 py-2.5 outline-none focus:border-brand-400"
+            placeholder="Ditt förnamn"
+            autoComplete="given-name"
+            defaultValue={settings.name}
+            onBlur={(e) => e.target.value.trim() !== settings.name && set({ name: e.target.value.trim() })}
+          />
+        </section>
+        <section className="space-y-3">
           <h2 className="font-black">Dagsmål</h2>
           <div className="grid grid-cols-3 gap-2">
             {[

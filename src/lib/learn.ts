@@ -72,12 +72,14 @@ export const todayXP = () => getKV<number>(`xp:${today()}`, 0)
 export interface Settings {
   /** The voices you sing, most preferred first. Each song uses the first one it has. */
   voices: string[]
+  /** Your first name, used for cheering you on. Stays on this device. */
+  name: string
   silent: boolean
   dailyGoal: number
   driveUrl: string
 }
 
-export const defaultSettings: Settings = { voices: [], silent: false, dailyGoal: 50, driveUrl: '' }
+export const defaultSettings: Settings = { voices: [], name: '', silent: false, dailyGoal: 50, driveUrl: '' }
 
 export async function getSettings(): Promise<Settings> {
   const saved = await getKV<Partial<Settings> & { voice?: string | null }>('settings', {})

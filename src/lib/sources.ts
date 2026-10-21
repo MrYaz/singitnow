@@ -25,11 +25,29 @@ export function fromFileList(list: FileList | File[]): SourceFile[] {
 }
 
 const API = 'https://www.googleapis.com/drive/v3/files'
-export const DRIVE_KEY: string | undefined = import.meta.env.VITE_GOOGLE_API_KEY || undefined
+export const DRIVE_KEY: string | undefined = (import.meta.env.VITE_GOOGLE_API_KEY as string | undefined)?.trim() || undefined
 
+/** Finds the folder id in a pasted Drive link, ignoring spaces, line breaks and extras like ?usp=sharing. */
 export function driveFolderId(url: string): string | null {
-  const m = url.match(/folders\/([\w-]{10,})/) ?? url.match(/[?&]id=([\w-]{10,})/) ?? url.trim().match(/^([\w-]{20,})$/)
+  const u = url.replace(/\s+/g, '')
+  const m = u.match(/folders\/([\w-]{10,})/) ?? u.match(/[?&]id=([\w-]{10,})/) ?? u.match(/^([\w-]{20,})$/)
   return m ? m[1] : null
+}
+
+/** fetch, with a clear message when the request never reaches Google. */
+async function driveFetch(url: string, tries = 3): Promise<Response> {
+  try {
+    return await fetch(url)
+  } catch {
+    // Google sometimes refuses a request for a moment (and then without the headers the browser needs).
+    if (tries > 1) {
+      await new Promise((r) => setTimeout(r, 1500))
+      return driveFetch(url, tries - 1)
+    }
+    throw new Error(
+      `Kunde inte nå Google Drive. Kolla att du är uppkopplad. Fungerar det ändå inte kan API-nyckeln sakna ${location.origin} bland tillåtna webbplatser.`,
+    )
+  }
 }
 
 interface DriveItem {
@@ -46,10 +64,10 @@ async function listChildren(folderId: string, key: string): Promise<DriveItem[]>
   do {
     const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`)
     const url =
-      `${API}?q=${q}&key=${key}&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true` +
+      `${API}?q=${q}&key=${encodeURIComponent(key)}&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true` +
       `&fields=nextPageToken,files(id,name,mimeType,size,modifiedTime)` +
       (page ? `&pageToken=${page}` : '')
-    const res = await fetch(url)
+    const res = await driveFetch(url)
     if (!res.ok) {
       const body = await res.text()
       throw new Error(res.status === 404 ? 'Hittar inte mappen. Är den delad som "Alla som har länken"?' : `Google Drive svarade ${res.status}: ${body.slice(0, 200)}`)
@@ -79,7 +97,7 @@ export async function listDriveFolder(folderUrl: string, key = DRIVE_KEY): Promi
           size: Number(it.size ?? 0),
           modified: it.modifiedTime,
           load: async () => {
-            const r = await fetch(`${API}/${it.id}?alt=media&key=${key}&supportsAllDrives=true`)
+            const r = await driveFetch(`${API}/${it.id}?alt=media&key=${encodeURIComponent(key)}&supportsAllDrives=true`)
             if (!r.ok) throw new Error(`Kunde inte hämta ${it.name} (${r.status})`)
             return r.blob()
           },

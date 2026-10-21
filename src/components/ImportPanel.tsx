@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { importSources } from '../lib/importer'
-import { DRIVE_KEY, fromFileList, listDriveFolder, type SourceFile } from '../lib/sources'
+import { DRIVE_KEY, fromFileList, driveFolderId, listDriveFolder, type SourceFile } from '../lib/sources'
 import { saveSettings } from '../lib/learn'
 import { useSettings } from '../settings'
 import { Bar } from './ui'
@@ -42,9 +42,17 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
   }
 
   const fromDrive = async () => {
-    await saveSettings({ driveUrl: url.trim() })
+    const id = driveFolderId(url)
+    if (!id) {
+      setErr('Det ser inte ut som en länk till en Drive-mapp.')
+      return
+    }
+    // Keep only the folder id, so extras like ?usp=sharing or spaces never get in the way.
+    const clean = `https://drive.google.com/drive/folders/${id}`
+    setUrl(clean)
+    await saveSettings({ driveUrl: clean })
     await reload()
-    await run(() => listDriveFolder(url.trim()))
+    await run(() => listDriveFolder(clean))
   }
 
   return (

@@ -14,8 +14,9 @@ export default function Setup() {
   const voices = sortVoices([...new Set((songs ?? []).flatMap((s) => Object.keys(s.voices)))])
 
   const [picked, setPicked] = useState<string[]>(settings.voices)
+  const [name, setName] = useState(settings.name)
   const done = async () => {
-    await saveSettings({ voices: picked })
+    await saveSettings({ voices: picked, name: name.trim() })
     await reload()
   }
 
@@ -24,7 +25,20 @@ export default function Setup() {
       <div className="pop text-center">
         <div className="text-6xl">🎶</div>
         <h1 className="mt-2 text-3xl font-black text-brand-700">SingItNow</h1>
-        <p className="mt-2 text-gray-600">Lär dig texterna utantill, en formdel i taget, så att du kan sjunga fritt med hela kroppen. Inga krav, bara glädje.</p>
+        <p className="mt-2 text-gray-600">Öva in körens låtar hemma, så att du kan sjunga fritt med hela kroppen. Inga krav, bara glädje.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="card">
+          <p className="text-2xl">🎚️</p>
+          <p className="mt-1 font-black">Stämrep</p>
+          <p className="text-sm text-gray-600">Lyssna på din stämma eller ALLA, loopa en fras om och om igen och mixa stämmorna.</p>
+        </div>
+        <div className="card">
+          <p className="text-2xl">✍️</p>
+          <p className="mt-1 font-black">Textträning</p>
+          <p className="text-sm text-gray-600">Lär dig texten utantill del för del, med sex olika inlärningssätt.</p>
+        </div>
       </div>
 
       {!songs?.length || busy ? (
@@ -38,6 +52,15 @@ export default function Setup() {
           <h2 className="text-xl font-extrabold">2. Vilken stämma sjunger du?</h2>
           <p className="text-sm text-gray-600">Osäker? Välj den som känns mest bekväm. Du kan byta när som helst.</p>
           <VoicePicker all={voices} value={picked} onChange={setPicked} />
+          <h2 className="text-xl font-extrabold">3. Vad heter du?</h2>
+          <input
+            className="w-full rounded-2xl border-2 border-brand-100 bg-white px-4 py-3 text-lg outline-none focus:border-brand-400"
+            placeholder="Ditt förnamn"
+            autoComplete="given-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <p className="-mt-3 text-xs text-gray-500">Så att appen kan peppa dig. Namnet stannar i din telefon.</p>
           <button className="btn-primary w-full" disabled={!picked.length} onClick={done}>
             Kör igång
           </button>

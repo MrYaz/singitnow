@@ -136,7 +136,16 @@ export default function Home() {
         </button>
       </div>
 
-      <button className="card mt-5 flex w-full items-center gap-4 border-brand-200 bg-brand-600 text-left text-white shadow-[0_5px_0_#4c1d95] active:translate-y-0.5" onClick={startDaily}>
+      <p className="mt-5 text-2xl font-black">{settings.name ? `Hej ${settings.name}! 👋` : 'Hej! 👋'}</p>
+      <p className="text-sm text-gray-600">
+        {(xp ?? 0) >= goal
+          ? 'Dagsmålet är klart. Snyggt jobbat!'
+          : (streak?.count ?? 0) > 1
+            ? `${streak!.count} dagar i rad. Fortsätt så!`
+            : 'Redo att sjunga? Lite varje dag gör stor skillnad.'}
+      </p>
+
+      <button className="card mt-4 flex w-full items-center gap-4 border-brand-200 bg-brand-600 text-left text-white shadow-[0_5px_0_#4c1d95] active:translate-y-0.5" onClick={startDaily}>
         <div className="text-4xl">✨</div>
         <div className="flex-1">
           <p className="text-xl font-black">Dagens pass</p>
