@@ -129,6 +129,11 @@ export class Mixer {
     this.emit()
   }
 
+  /** Where the current clip stops, if it has an end. */
+  get until(): number | undefined {
+    return this.opts.to
+  }
+
   /** Current position in the song, in seconds. */
   get time(): number {
     if (!this.playing || !ctx) return this.offset
