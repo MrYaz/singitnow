@@ -5,22 +5,25 @@ import { levelsFor } from '../lib/learn'
 import { LEVELS, buildLesson, learnable } from '../lib/exercises'
 import { useNav } from '../nav'
 import { useSettings } from '../settings'
+import { pickVoice } from '../lib/names'
 import { LineText, Sheet, TopBar } from '../components/ui'
 
 export default function SongPath({ songId }: { songId: string }) {
   const nav = useNav()
   const { settings } = useSettings()
-  const voice = settings.voice!
   const song = useLiveQuery(() => db.songs.get(songId), [songId])
+  const voice = pickVoice(song?.voices ?? {}, settings.voices) ?? ''
   const levels = useLiveQuery(() => levelsFor(songId, voice), [songId, voice])
   const [open, setOpen] = useState<number | null>(null)
+  /** A step chosen to practise on every part, instead of each part's next step. */
+  const [step, setStep] = useState<number | null>(null)
   if (!song || !levels) return null
   const track = song.voices[voice]
   if (!track) {
     return (
       <>
         <TopBar title={song.title} />
-        <p className="p-4">Låten har ingen {voice}-stämma.</p>
+        <p className="p-4">Låten har ingen av dina stämmor ({settings.voices.join(', ')}). Välj fler stämmor i inställningarna.</p>
       </>
     )
   }
@@ -32,19 +35,24 @@ export default function SongPath({ songId }: { songId: string }) {
     setOpen(null)
     nav.go({
       name: 'lesson',
-      title: `${song.title} · ${LEVELS[level].name}`,
+      title: `${song.title} · Steg ${level + 1} av ${LEVELS.length}: ${LEVELS[level].name}`,
       items: buildLesson(track.sections, section, level).map((ex) => ({ songId, voice, ex })),
       level: { songId, voice, section, level },
     })
   }
 
   const openSec = open !== null ? track.sections[open] : null
-  const openLevel = open !== null ? Math.min(levels[open] ?? 0, LEVELS.length - 1) : 0
+  const openLevel = open !== null ? (step ?? Math.min(levels[open] ?? 0, LEVELS.length - 1)) : 0
 
   return (
     <>
       <TopBar
-        title={song.title}
+        title={
+          <span className="flex flex-col leading-tight">
+            <span className="text-xs font-black tracking-wide text-brand-600 uppercase">Textträning</span>
+            <span className="truncate">{song.title}</span>
+          </span>
+        }
         right={
           <button className="rounded-full bg-brand-100 px-3 py-1.5 text-sm font-extrabold text-brand-700" onClick={() => nav.go({ name: 'rehearsal', songId })}>
             Stämrep
@@ -52,9 +60,29 @@ export default function SongPath({ songId }: { songId: string }) {
         }
       />
       <main className="px-4 pb-16">
-        <p className="mb-6 text-center text-sm text-gray-500">
-          {voice} · en formdel i taget, {LEVELS.length} steg per del
-        </p>
+        <section className="card mb-8">
+          <p className="font-black">Varje del tränas i {LEVELS.length} steg</p>
+          <p className="mb-3 text-sm text-gray-600">
+            Appen tar dig till nästa steg av sig själv. Gillar du ett visst sätt att träna? Välj steget, så används det för alla delar.
+          </p>
+          <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {LEVELS.map((L, li) => (
+              <li key={L.name}>
+                <button
+                  aria-pressed={step === li}
+                  onClick={() => setStep(step === li ? null : li)}
+                  className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm font-bold transition ${step === li ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-700'}`}
+                >
+                  <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-black ${step === li ? 'bg-white text-brand-700' : 'bg-brand-200 text-brand-700'}`}>{li + 1}</span>
+                  {L.name}
+                </button>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-3 text-xs text-gray-500">
+            {step === null ? `Auto: nästa steg för varje del · ${voice}` : `Tränar steg ${step + 1}, ${LEVELS[step].name.toLowerCase()}, på alla delar. Tryck igen för auto.`}
+          </p>
+        </section>
         <ol className="relative mx-auto flex max-w-sm flex-col items-center gap-6">
           {secs.map(({ s, i }, k) => {
             const lv = levels[i] ?? 0
@@ -107,7 +135,7 @@ export default function SongPath({ songId }: { songId: string }) {
           <div className="space-y-4">
             <div>
               <p className="text-xs font-bold tracking-wide text-brand-600 uppercase">
-                Steg {Math.min((levels[open] ?? 0) + 1, LEVELS.length)} av {LEVELS.length}
+                Steg {openLevel + 1} av {LEVELS.length}
               </p>
               <p className="text-xl font-black">{LEVELS[openLevel].name}</p>
               <p className="text-sm text-gray-600">{LEVELS[openLevel].blurb}</p>
@@ -120,14 +148,22 @@ export default function SongPath({ songId }: { songId: string }) {
               ))}
             </div>
             <button className="btn-primary w-full" onClick={() => start(open, openLevel)}>
-              {(levels[open] ?? 0) >= LEVELS.length ? 'Öva igen' : 'Starta'}
+              {openLevel < (levels[open] ?? 0) ? 'Öva igen' : 'Starta'}
             </button>
-            <div className="flex flex-wrap gap-2">
-              {LEVELS.map((L, li) => (
-                <button key={L.name} disabled={li > (levels[open] ?? 0)} className="rounded-full bg-brand-100 px-3 py-1 text-xs font-bold text-brand-700 disabled:opacity-40" onClick={() => start(open, li)}>
-                  {L.name}
-                </button>
-              ))}
+            <div>
+              <p className="mb-2 text-xs font-bold text-gray-500">Eller hoppa till ett annat steg:</p>
+              <div className="grid grid-cols-2 gap-2">
+                {LEVELS.map((L, li) => (
+                  <button
+                    key={L.name}
+                    className={`flex items-center gap-2 rounded-xl px-2 py-2 text-left text-sm font-bold ${li === openLevel ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-700'}`}
+                    onClick={() => start(open, li)}
+                  >
+                    <span className="w-5 text-center">{li < (levels[open] ?? 0) ? '✓' : li + 1}</span>
+                    {L.name}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}

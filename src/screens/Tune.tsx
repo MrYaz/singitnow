@@ -9,7 +9,7 @@ import { LineText, TopBar, fmt } from '../components/ui'
 export default function Tune({ songId }: { songId: string }) {
   const { settings } = useSettings()
   const song = useLiveQuery(() => db.songs.get(songId), [songId])
-  const [voice, setVoice] = useState(settings.voice!)
+  const [voice, setVoice] = useState(settings.voices[0] ?? '')
   const mixer = useRef(new Mixer()).current
   if (!song) return null
   const track = song.voices[voice] ?? Object.values(song.voices)[0]

@@ -5,6 +5,7 @@ import { saveSettings } from '../lib/learn'
 import { sortVoices } from '../lib/names'
 import { useSettings } from '../settings'
 import { ImportPanel } from '../components/ImportPanel'
+import { VoicePicker } from '../components/VoicePicker'
 
 export default function Setup() {
   const { settings, reload } = useSettings()
@@ -12,8 +13,9 @@ export default function Setup() {
   const [busy, setBusy] = useState(false)
   const voices = sortVoices([...new Set((songs ?? []).flatMap((s) => Object.keys(s.voices)))])
 
-  const pick = async (voice: string) => {
-    await saveSettings({ voice })
+  const [picked, setPicked] = useState<string[]>(settings.voices)
+  const done = async () => {
+    await saveSettings({ voices: picked })
     await reload()
   }
 
@@ -35,13 +37,10 @@ export default function Setup() {
           <p className="card font-bold text-good-600">✓ {songs.length} låtar inlästa</p>
           <h2 className="text-xl font-extrabold">2. Vilken stämma sjunger du?</h2>
           <p className="text-sm text-gray-600">Osäker? Välj den som känns mest bekväm. Du kan byta när som helst.</p>
-          <div className="grid grid-cols-2 gap-3">
-            {voices.map((v) => (
-              <button key={v} className={settings.voice === v ? 'btn-primary' : 'btn-ghost'} onClick={() => pick(v)}>
-                {v}
-              </button>
-            ))}
-          </div>
+          <VoicePicker all={voices} value={picked} onChange={setPicked} />
+          <button className="btn-primary w-full" disabled={!picked.length} onClick={done}>
+            Kör igång
+          </button>
         </>
       )}
     </main>

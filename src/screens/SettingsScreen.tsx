@@ -9,6 +9,7 @@ import { useNav } from '../nav'
 import { useSettings } from '../settings'
 import { ImportPanel } from '../components/ImportPanel'
 import { TopBar } from '../components/ui'
+import { VoicePicker } from '../components/VoicePicker'
 
 export default function SettingsScreen() {
   const nav = useNav()
@@ -40,14 +41,8 @@ export default function SettingsScreen() {
       <TopBar title="Inställningar" />
       <main className="space-y-6 px-4 pb-16">
         <section className="space-y-3">
-          <h2 className="font-black">Min stämma</h2>
-          <div className="grid grid-cols-3 gap-2">
-            {voices.map((v) => (
-              <button key={v} className={`${settings.voice === v ? 'btn-primary' : 'btn-ghost'} px-2 py-2 text-sm`} onClick={() => set({ voice: v })}>
-                {v}
-              </button>
-            ))}
-          </div>
+          <h2 className="font-black">Mina stämmor</h2>
+          <VoicePicker all={voices} value={settings.voices} cols={3} onChange={(v) => v.length && set({ voices: v })} />
         </section>
         <section className="space-y-3">
           <h2 className="font-black">Dagsmål</h2>

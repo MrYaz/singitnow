@@ -88,3 +88,8 @@ export function sortVoices(vs: string[]): string[] {
 /** Short labels for solo buttons: S, S1, S2, A1, A2. */
 export const shortVoice = (v: string) =>
   ({ Sopran: 'S', 'Sopran 1': 'S1', 'Sopran 2': 'S2', 'Alt 1': 'A1', 'Alt 2': 'A2' })[v] ?? v
+
+/** The voice to use for a song: the first of your voices that the song has. */
+export function pickVoice(songVoices: Record<string, unknown>, mine: string[]): string | null {
+  return mine.find((v) => v in songVoices) ?? null
+}

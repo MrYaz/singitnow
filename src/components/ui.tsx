@@ -37,6 +37,23 @@ export function LineText({ line, className = '' }: { line: Line; className?: str
   )
 }
 
+/** What the other voices sing while yours rests: italic and greyed out. */
+export function OthersText({ others }: { others: string[] }) {
+  return (
+    <div className="space-y-0.5 px-1 text-lg text-gray-400 italic">
+      {others.map((o, i) => {
+        const m = o.match(/^([\p{L}\d ]{1,12}):\s*(.*)$/u)
+        return (
+          <p key={i}>
+            {m && <span className="mr-1 text-xs font-bold not-italic uppercase">{m[1]}</span>}
+            {m ? m[2] : o}
+          </p>
+        )
+      })}
+    </div>
+  )
+}
+
 export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
   if (!open) return null
   return (
