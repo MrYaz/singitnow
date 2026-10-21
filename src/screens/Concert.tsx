@@ -6,14 +6,15 @@ import { addXP, Rating, rateLine } from '../lib/learn'
 import { learnable } from '../lib/exercises'
 import { useNav } from '../nav'
 import { useSettings } from '../settings'
+import { pickVoice } from '../lib/names'
 import { Bar, TopBar } from '../components/ui'
 
 /** Whole song with backing only and no lyrics. Afterwards, rate each part. */
 export default function Concert({ songId }: { songId: string }) {
   const nav = useNav()
   const { settings } = useSettings()
-  const voice = settings.voice!
   const song = useLiveQuery(() => db.songs.get(songId), [songId])
+  const voice = pickVoice(song?.voices ?? {}, settings.voices) ?? ''
   const mixer = useRef(new Mixer()).current
   const [t, setT] = useState(0)
   const [phase, setPhase] = useState<'ready' | 'playing' | 'rate' | 'done'>('ready')

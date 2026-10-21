@@ -16,9 +16,9 @@ export async function rateLine(songId: string, voice: string, s: number, l: numb
   await db.cards.put({ key, songId, voice, due: next.due.getTime(), card: next })
 }
 
-export async function dueLines(voice: string, limit = 12) {
+export async function dueLines(voices: string[], limit = 12) {
   const now = Date.now()
-  const rows = await db.cards.where('due').belowOrEqual(now).filter((r) => r.voice === voice).toArray()
+  const rows = await db.cards.where('due').belowOrEqual(now).filter((r) => voices.includes(r.voice)).toArray()
   return rows.sort((a, b) => a.due - b.due).slice(0, limit)
 }
 
@@ -68,16 +68,21 @@ export const todayXP = () => getKV<number>(`xp:${today()}`, 0)
 // ---- Settings --------------------------------------------------------------
 
 export interface Settings {
-  voice: string | null
+  /** The voices you sing, most preferred first. Each song uses the first one it has. */
+  voices: string[]
   silent: boolean
   dailyGoal: number
   driveUrl: string
 }
 
-export const defaultSettings: Settings = { voice: null, silent: false, dailyGoal: 50, driveUrl: '' }
+export const defaultSettings: Settings = { voices: [], silent: false, dailyGoal: 50, driveUrl: '' }
 
 export async function getSettings(): Promise<Settings> {
-  return { ...defaultSettings, ...(await getKV<Partial<Settings>>('settings', {})) }
+  const saved = await getKV<Partial<Settings> & { voice?: string | null }>('settings', {})
+  // Older versions stored a single voice.
+  if (!saved.voices && saved.voice) saved.voices = [saved.voice]
+  delete saved.voice
+  return { ...defaultSettings, ...saved }
 }
 
 export async function saveSettings(patch: Partial<Settings>) {

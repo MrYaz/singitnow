@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
 import { Mixer, unlockAudio } from '../lib/audio/engine'
-import { shortVoice, sortVoices } from '../lib/names'
+import { shortVoice, sortVoices, pickVoice } from '../lib/names'
 import { useSettings } from '../settings'
-import { LineText, TopBar, fmt } from '../components/ui'
+import { LineText, OthersText, TopBar, fmt } from '../components/ui'
 
 interface Track {
   id: string
@@ -37,7 +37,7 @@ export default function Rehearsal({ songId }: { songId: string }) {
     return out
   }, [song])
 
-  const own = tracks.find((x) => x.voice === settings.voice) ?? tracks[0]
+  const own = tracks.find((x) => x.voice === pickVoice(song?.voices ?? {}, settings.voices)) ?? tracks[0]
 
   useEffect(() => {
     if (!tracks.length) return
@@ -140,6 +140,7 @@ export default function Rehearsal({ songId }: { songId: string }) {
                       </button>
                     )
                   })}
+                {!hideText && !s.lines.length && s.others.length > 0 && <OthersText others={s.others} />}
                 {hideText && <p className="text-gray-400">{s.lines.length} rader</p>}
               </section>
             )

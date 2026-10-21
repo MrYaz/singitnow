@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
 import { dueLines, getStreak, levelsFor, saveSettings, todayXP } from '../lib/learn'
 import { LEVELS, learnable, reviewExercise, buildLesson } from '../lib/exercises'
-import { sortVoices } from '../lib/names'
+import { pickVoice, sortVoices } from '../lib/names'
+import { VoicePicker, voiceLabel } from '../components/VoicePicker'
 import { importSources } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder } from '../lib/sources'
 import { useNav, type LessonItem } from '../nav'
@@ -16,16 +17,20 @@ let checkedDrive = false
 export default function Home() {
   const nav = useNav()
   const { settings, reload } = useSettings()
-  const voice = settings.voice!
+  const mine = settings.voices
   const songs = useLiveQuery(() => db.songs.orderBy('order').toArray(), [])
   const xp = useLiveQuery(() => todayXP(), [])
   const streak = useLiveQuery(() => getStreak(), [])
-  const due = useLiveQuery(() => dueLines(voice, 50), [voice])
+  const mineKey = mine.join('|')
+  const due = useLiveQuery(() => dueLines(mine, 50), [mineKey])
   const levels = useLiveQuery(async () => {
     const out: Record<string, Record<number, number>> = {}
-    for (const s of songs ?? []) out[s.id] = await levelsFor(s.id, voice)
+    for (const s of songs ?? []) {
+      const v = pickVoice(s.voices, mine)
+      out[s.id] = v ? await levelsFor(s.id, v) : {}
+    }
     return out
-  }, [songs, voice])
+  }, [songs, mineKey])
   const [voiceSheet, setVoiceSheet] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const syncing = useRef(false)
@@ -52,8 +57,10 @@ export default function Home() {
   const allVoices = sortVoices([...new Set(songs.flatMap((s) => Object.keys(s.voices)))])
   const goal = settings.dailyGoal
 
+  const voiceOf = (s: Song) => pickVoice(s.voices, mine)
   const progressOf = (s: Song) => {
-    const v = s.voices[voice]
+    const vn = voiceOf(s)
+    const v = vn ? s.voices[vn] : null
     if (!v) return null
     const secs = learnable(v.sections)
     const lv = levels[s.id] ?? {}
@@ -65,11 +72,11 @@ export default function Home() {
   // Next thing to learn: the first section that is not finished.
   const next = (() => {
     for (const s of songs) {
-      const v = s.voices[voice]
-      if (!v) continue
-      for (const { i } of learnable(v.sections)) {
+      const vn = voiceOf(s)
+      if (!vn) continue
+      for (const { i } of learnable(s.voices[vn].sections)) {
         const lv = levels[s.id]?.[i] ?? 0
-        if (lv < LEVELS.length) return { song: s, section: i, level: lv }
+        if (lv < LEVELS.length) return { song: s, voice: vn, section: i, level: lv }
       }
     }
     return null
@@ -78,9 +85,10 @@ export default function Home() {
   const startDaily = () => {
     const items: LessonItem[] = []
     for (const row of due ?? []) {
-      const [songId, , s, l] = row.key.split('|')
+      const [songId, voice, s, l] = row.key.split('|')
       const song = songs.find((x) => x.id === songId)
-      const sections = song?.voices[voice]?.sections
+      if (!song || voiceOf(song) !== voice) continue
+      const sections = song.voices[voice]?.sections
       if (!sections?.[Number(s)]?.lines[Number(l)]) continue
       items.push({ songId, voice, ex: reviewExercise(sections, Number(s), Number(l), row.card.reps, row.due % 997) })
       if (items.length >= 12) break
@@ -91,10 +99,11 @@ export default function Home() {
 
   const startNext = () => {
     if (!next) return
+    const { voice } = next
     const sections = next.song.voices[voice].sections
     nav.go({
       name: 'lesson',
-      title: `${next.song.title} · ${LEVELS[next.level].name}`,
+      title: `${next.song.title} · Steg ${next.level + 1} av ${LEVELS.length}: ${LEVELS[next.level].name}`,
       items: buildLesson(sections, next.section, next.level).map((ex) => ({ songId: next.song.id, voice, ex })),
       level: { songId: next.song.id, voice, section: next.section, level: next.level },
     })
@@ -113,7 +122,7 @@ export default function Home() {
           </p>
         </div>
         <button className="rounded-full bg-brand-100 px-3 py-1.5 text-sm font-extrabold text-brand-700" onClick={() => setVoiceSheet(true)}>
-          {voice} ▾
+          {voiceLabel(mine)} ▾
         </button>
         <button aria-label="Inställningar" className="grid h-9 w-9 place-items-center rounded-full text-xl active:bg-brand-100" onClick={() => nav.go({ name: 'settings' })}>
           ⚙️
@@ -155,15 +164,15 @@ export default function Home() {
                     </p>
                   </>
                 ) : (
-                  <p className="text-xs text-gray-500">Ingen {voice}-stämma i den här låten</p>
+                  <p className="text-xs text-gray-500">Ingen av dina stämmor finns i den här låten</p>
                 )}
               </button>
               <div className="mt-3 flex gap-2">
-                <button className="btn-primary flex-1 py-2" disabled={!p} onClick={() => nav.go({ name: 'song', songId: s.id })}>
-                  Lär dig
-                </button>
                 <button className="btn-ghost flex-1 py-2" onClick={() => nav.go({ name: 'rehearsal', songId: s.id })}>
                   Stämrep
+                </button>
+                <button className="btn-primary flex-1 py-2" disabled={!p} onClick={() => nav.go({ name: 'song', songId: s.id })}>
+                  Textträning
                 </button>
               </div>
             </li>
@@ -172,22 +181,16 @@ export default function Home() {
       </ul>
 
       <Sheet open={voiceSheet} onClose={() => setVoiceSheet(false)}>
-        <p className="mb-3 text-lg font-black">Byt stämma</p>
-        <div className="grid grid-cols-2 gap-3">
-          {allVoices.map((v) => (
-            <button
-              key={v}
-              className={v === voice ? 'btn-primary' : 'btn-ghost'}
-              onClick={async () => {
-                await saveSettings({ voice: v })
-                await reload()
-                setVoiceSheet(false)
-              }}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
+        <p className="mb-3 text-lg font-black">Mina stämmor</p>
+        <VoicePicker
+          all={allVoices}
+          value={mine}
+          onChange={async (v) => {
+            if (!v.length) return
+            await saveSettings({ voices: v })
+            await reload()
+          }}
+        />
         <p className="mt-3 text-xs text-gray-500">Varje stämma har sina egna framsteg.</p>
       </Sheet>
     </main>

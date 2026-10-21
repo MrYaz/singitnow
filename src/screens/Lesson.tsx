@@ -9,6 +9,7 @@ import type { Line, Song } from '../lib/types'
 import { useNav, type LessonItem } from '../nav'
 import { useSettings } from '../settings'
 import { Bar, LineText } from '../components/ui'
+import { shortVoice, sortVoices } from '../lib/names'
 
 const PRAISE = ['Snyggt!', 'Bra jobbat!', 'Toppen!', 'Så ska det låta!', 'Wow!', 'Helt rätt!']
 const KIND = ['Den tar vi igen snart 💜', 'Nästa gång sitter den!', 'Bra försök, vi övar mer på den.']
@@ -26,6 +27,8 @@ export default function Lesson({ title, items, level }: { title: string; items: 
   const [stats, setStats] = useState({ good: 0, total: 0 })
   const [silent, setSilent] = useState(settings.silent)
   const mixer = useRef(new Mixer()).current
+  /** A file chosen to listen to instead of the exercise's default. */
+  const [hear, setHear] = useState<string | null>(null)
 
   useEffect(() => () => mixer.stop(), [mixer])
 
@@ -85,7 +88,10 @@ export default function Lesson({ title, items, level }: { title: string; items: 
         <button aria-label="Avsluta" className="text-2xl text-gray-400" onClick={nav.back}>
           ✕
         </button>
-        <Bar value={idx / items.length} className="flex-1" />
+        <div className="flex-1">
+          <p className="mb-1 text-sm font-black text-brand-700">Textträning</p>
+          <Bar value={idx / items.length} />
+        </div>
         <button
           aria-label={silent ? 'Slå på ljud' : 'Tyst läge'}
           className={`rounded-full px-2 py-1 text-lg ${silent ? 'bg-gray-200' : 'bg-brand-100'}`}
@@ -98,8 +104,19 @@ export default function Lesson({ title, items, level }: { title: string; items: 
         </button>
       </header>
       <p className="px-5 text-xs font-bold tracking-wide text-gray-400 uppercase">{title}</p>
+      {!silent && (
+        <HearPicker
+          song={song}
+          voice={it.voice}
+          value={hear}
+          onChange={(v) => {
+            mixer.stop()
+            setHear(v)
+          }}
+        />
+      )}
       <main className="flex flex-1 flex-col px-5 pt-3">
-        <ExerciseView key={idx} ex={it.ex} song={song} voice={it.voice} silent={silent} mixer={mixer} answered={result !== null} onResult={finish} />
+        <ExerciseView key={idx} ex={it.ex} song={song} voice={it.voice} silent={silent} hear={hear} mixer={mixer} answered={result !== null} onResult={finish} />
       </main>
       <Footer result={result} onNext={next} seed={idx} />
     </div>
@@ -125,12 +142,37 @@ interface ExProps {
   song: Song
   voice: string
   silent: boolean
+  /** File to listen to instead of the default one, if any. */
+  hear: string | null
   mixer: Mixer
   answered: boolean
   onResult: (o: Outcome) => void
 }
 
-function useClips(song: Song, voice: string, mixer: Mixer, silent: boolean) {
+/** Lets you listen to any voice (or ALLA) while you practise. */
+function HearPicker({ song, voice, value, onChange }: { song: Song; voice: string; value: string | null; onChange: (v: string | null) => void }) {
+  const opts: { id: string | null; label: string }[] = [{ id: null, label: 'Auto' }]
+  for (const v of sortVoices(Object.keys(song.voices))) opts.push({ id: song.voices[v].audioFileId, label: shortVoice(v) + (v === voice ? ' ★' : '') })
+  if (song.allaFileId) opts.push({ id: song.allaFileId, label: 'ALLA' })
+  if (song.musikFileId) opts.push({ id: song.musikFileId, label: 'Musik' })
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-5 pt-2" role="group" aria-label="Lyssna på">
+      <span className="text-xs font-bold text-gray-500">Lyssna på</span>
+      {opts.map((o) => (
+        <button
+          key={o.label}
+          aria-pressed={value === o.id}
+          className={`rounded-lg px-2 py-1 text-xs font-black ${value === o.id ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+          onClick={() => onChange(o.id)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function useClips(song: Song, voice: string, mixer: Mixer, silent: boolean, hear: string | null) {
   const track = song.voices[voice]
   const [playing, setPlaying] = useState(false)
   useEffect(() => {
@@ -140,6 +182,7 @@ function useClips(song: Song, voice: string, mixer: Mixer, silent: boolean) {
     }
   }, [mixer])
   const play = async (fileId: string | undefined, from?: number, to?: number) => {
+    fileId = hear ?? fileId
     if (silent || !fileId || from === undefined || to === undefined) return
     unlockAudio()
     await mixer.setTracks([fileId])
@@ -200,8 +243,8 @@ function PlayButton({ onClick, playing, label = 'Lyssna' }: { onClick: () => voi
   )
 }
 
-function Listen({ ex, song, voice, silent, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'listen' }> }) {
-  const clips = useClips(song, voice, mixer, silent)
+function Listen({ ex, song, voice, silent, hear, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'listen' }> }) {
+  const clips = useClips(song, voice, mixer, silent, hear)
   const sec = song.voices[voice].sections[ex.section]
   const [t, setT] = useState(0)
   useEffect(() => {
@@ -220,7 +263,7 @@ function Listen({ ex, song, voice, silent, mixer, answered, onResult }: ExProps 
   const isAlla = ex.track === 'alla'
   return (
     <>
-      <Prompt>{silent ? 'Läs igenom delen. Vad handlar den om?' : isAlla ? 'Lyssna på ALLA och följ med i texten' : `Lyssna på ${voice} och följ med`}</Prompt>
+      <Prompt>{silent ? 'Läs igenom delen. Vad handlar den om?' : hear ? 'Lyssna och följ med i texten' : isAlla ? 'Lyssna på ALLA och följ med i texten' : `Lyssna på ${voice} och följ med`}</Prompt>
       <div className="card space-y-2 text-lg leading-relaxed">
         {sec.lines.map((l, i) => {
           const on = clips.playing && t >= (l.start ?? 0) - 0.1 && t < (l.end ?? 0) + 0.2
@@ -256,8 +299,8 @@ function Listen({ ex, song, voice, silent, mixer, answered, onResult }: ExProps 
   )
 }
 
-function Choose({ ex, song, voice, silent, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'choose' }> }) {
-  const clips = useClips(song, voice, mixer, silent)
+function Choose({ ex, song, voice, silent, hear, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'choose' }> }) {
+  const clips = useClips(song, voice, mixer, silent, hear)
   const sec = song.voices[voice].sections[ex.section]
   const line = sec.lines[ex.line]
   const words = tokens(line.text)
@@ -307,8 +350,8 @@ function Choose({ ex, song, voice, silent, mixer, answered, onResult }: ExProps 
   )
 }
 
-function Tiles({ ex, song, voice, silent, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'tiles' }> }) {
-  const clips = useClips(song, voice, mixer, silent)
+function Tiles({ ex, song, voice, silent, hear, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'tiles' }> }) {
+  const clips = useClips(song, voice, mixer, silent, hear)
   const sec = song.voices[voice].sections[ex.section]
   const line = sec.lines[ex.line]
   const target = tokens(line.text).map(bare)
@@ -407,8 +450,8 @@ function Order({ ex, song, voice, answered, onResult }: ExProps & { ex: Extract<
 }
 
 /** Initials, fading words and "sing it yourself": recall, then rate yourself. */
-function Recall({ ex, song, voice, silent, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'initials' | 'fade' | 'sing' }> }) {
-  const clips = useClips(song, voice, mixer, silent)
+function Recall({ ex, song, voice, silent, hear, mixer, answered, onResult }: ExProps & { ex: Extract<Exercise, { type: 'initials' | 'fade' | 'sing' }> }) {
+  const clips = useClips(song, voice, mixer, silent, hear)
   const sec = song.voices[voice].sections[ex.section]
   const line = sec.lines[ex.line]
   const prev = sec.lines[ex.line - 1]

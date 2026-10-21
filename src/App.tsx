@@ -44,7 +44,7 @@ export default function App() {
   if (!settings || songCount === undefined) return <div className="grid h-full place-items-center text-brand-600">Laddar…</div>
 
   const screen = stack.at(-1)!
-  const needsSetup = songCount === 0 || !settings.voice
+  const needsSetup = songCount === 0 || !settings.voices.length
   let body: React.ReactNode
   if (needsSetup && screen.name !== 'settings') body = <Setup />
   else
