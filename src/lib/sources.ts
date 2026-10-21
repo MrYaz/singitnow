@@ -65,14 +65,14 @@ export function shareLink(driveUrl: string): string | null {
 }
 
 /** fetch, with a clear message when the request never reaches Google. */
-async function driveFetch(url: string, tries = 3): Promise<Response> {
+async function driveFetch(url: string, waits = [2000, 6000, 15000]): Promise<Response> {
   try {
     return await fetch(url)
   } catch {
-    // Google sometimes refuses a request for a moment (and then without the headers the browser needs).
-    if (tries > 1) {
-      await new Promise((r) => setTimeout(r, 1500))
-      return driveFetch(url, tries - 1)
+    // Google sometimes refuses a request for a while (and then without the headers the browser needs), so wait longer each time.
+    if (waits.length) {
+      await new Promise((r) => setTimeout(r, waits[0]))
+      return driveFetch(url, waits.slice(1))
     }
     throw new Error(
       `Kunde inte nå Google Drive. Kolla att du är uppkopplad. Fungerar det ändå inte kan API-nyckeln sakna ${location.origin} bland tillåtna webbplatser.`,

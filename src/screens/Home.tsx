@@ -5,7 +5,7 @@ import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../
 import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
 import { pickVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
-import { importSources } from '../lib/importer'
+import { ImportError, importSources } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder, takeLinkedDrive } from '../lib/sources'
 import { onRefineStatus, refineInBackground } from '../lib/refine'
 import { useNav, type LessonItem } from '../nav'
@@ -51,8 +51,10 @@ export default function Home() {
         const files = await listDriveFolder(settings.driveUrl)
         const added = await importSources(files, (m) => setSyncMsg(m))
         setSyncMsg(added.length ? `${added.length} ny${added.length === 1 ? '' : 'a'} låt${added.length === 1 ? '' : 'ar'} från Drive!` : '')
-      } catch {
-        setSyncMsg('')
+      } catch (e) {
+        // Songs that failed are tried again next start; just mention the ones that did arrive.
+        const n = e instanceof ImportError ? e.imported.length : 0
+        setSyncMsg(n ? `${n} ny${n === 1 ? '' : 'a'} låt${n === 1 ? '' : 'ar'} från Drive!` : '')
       } finally {
         syncing.current = false
         void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
