@@ -24,6 +24,7 @@ export type Screen =
   | { name: 'concert'; songId: string }
   | { name: 'rehearsal'; songId: string }
   | { name: 'tune'; songId: string }
+  | { name: 'read'; songId: string }
 
 export interface Nav {
   go: (s: Screen) => void

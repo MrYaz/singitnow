@@ -39,6 +39,11 @@ export default function Setup() {
           <p className="mt-1 font-black">Textträning</p>
           <p className="text-sm text-gray-600">Lär dig texten utantill del för del, med sex olika inlärningssätt.</p>
         </div>
+        <div className="card col-span-2">
+          <p className="text-2xl">📖</p>
+          <p className="mt-1 font-black">Körrep</p>
+          <p className="text-sm text-gray-600">Bara texten, stor och lättläst på mobilen eller läsplattan, med allt från körens PDF:er.</p>
+        </div>
       </div>
 
       {!songs?.length || busy ? (
@@ -48,7 +53,7 @@ export default function Setup() {
         </>
       ) : (
         <>
-          <p className="card font-bold text-good-600">✓ {songs.length} låtar inlästa</p>
+          <p className="card font-bold text-good-600">✓ {songs.length} {songs.length === 1 ? 'låt' : 'låtar'} inlästa</p>
           <h2 className="text-xl font-extrabold">2. Vilken stämma sjunger du?</h2>
           <p className="text-sm text-gray-600">Osäker? Välj den som känns mest bekväm. Du kan byta när som helst.</p>
           <VoicePicker all={voices} value={picked} onChange={setPicked} />

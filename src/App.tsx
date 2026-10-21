@@ -13,6 +13,7 @@ import Rehearsal from './screens/Rehearsal'
 import SettingsScreen from './screens/SettingsScreen'
 import Tune from './screens/Tune'
 import Concert from './screens/Concert'
+import ChoirRead from './screens/ChoirRead'
 
 export default function App() {
   const [stack, setStack] = useState<Screen[]>([{ name: 'home' }])
@@ -82,6 +83,9 @@ export default function App() {
         break
       case 'concert':
         body = <Concert songId={screen.songId} />
+        break
+      case 'read':
+        body = <ChoirRead key={screen.songId} songId={screen.songId} />
         break
     }
 

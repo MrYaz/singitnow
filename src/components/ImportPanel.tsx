@@ -34,6 +34,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
       setPct(1)
       onDone?.()
     } catch (e) {
+      setMsg('')
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)

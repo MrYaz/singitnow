@@ -59,10 +59,10 @@ export function othersVoices(others: string[]): string[] {
 
 /** What the other voices sing while yours rests: italic and greyed out.
  *  With one voice the name sits in the card heading, so labels are only shown when several voices alternate. */
-export function OthersText({ others }: { others: string[] }) {
+export function OthersText({ others, className = 'px-1 text-lg text-gray-400' }: { others: string[]; className?: string }) {
   const showLabels = othersVoices(others).length > 1
   return (
-    <div className="space-y-0.5 px-1 text-lg text-gray-400 italic">
+    <div className={`space-y-0.5 italic ${className}`}>
       {others.map((o, i) => {
         const m = o.match(LABEL)
         return (

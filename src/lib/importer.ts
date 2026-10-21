@@ -31,6 +31,34 @@ async function storeFile(g: SongGroup, gf: SongGroup['files'][number], report: (
   return row
 }
 
+/** Whether a song is new or changed since it was last imported, without downloading anything. */
+async function songStatus(g: SongGroup) {
+  const prev = await db.songs.get(g.id)
+  const changed = await Promise.all(
+    g.files.map(async (f) => {
+      const e = await db.files.get(f.file.id)
+      return !e || e.modified !== f.file.modified || e.size !== f.file.size
+    }),
+  )
+  const changedIds = new Set(g.files.filter((_, k) => changed[k]).map((f) => f.file.id))
+  // Only voices with lyrics become part of a song, so a voice file without a PDF is not "missing".
+  const withLyrics = (v?: string) => g.files.some((f) => f.kind === 'pdf' && f.voice === v)
+  const missingVoices = g.files.some((f) => f.kind === 'voice' && f.voice && withLyrics(f.voice) && !prev?.voices[f.voice])
+  const goneVoices = Object.keys(prev?.voices ?? {}).some((v) => !g.files.some((f) => f.kind === 'voice' && f.voice === v))
+  const needed = !prev || changed.some(Boolean) || missingVoices || goneVoices || (prev as Song & { v?: number }).v !== ANALYSIS_VERSION
+  return { prev, changedIds, needed }
+}
+
+/** Songs in the folder that are new or changed since last time, to ask before downloading them. */
+export async function songsToFetch(sources: SourceFile[]): Promise<{ name: string; isNew: boolean }[]> {
+  const out: { name: string; isNew: boolean }[] = []
+  for (const g of groupSongs(sources)) {
+    const { prev, needed } = await songStatus(g)
+    if (needed) out.push({ name: prev?.title ?? folderTitle(g.folder), isNew: !prev })
+  }
+  return out
+}
+
 /**
  * Imports songs: stores the files, reads every PDF and finds each line in the audio.
  * Songs whose files did not change are skipped unless `force` is set.
@@ -43,17 +71,8 @@ export async function importSources(sources: SourceFile[], onProgress: Progress,
   let step = 0
   const total = groups.length
   for (const g of groups) {
-    const prev = await db.songs.get(g.id)
-    const changed = await Promise.all(
-      g.files.map(async (f) => {
-        const e = await db.files.get(f.file.id)
-        return !e || e.modified !== f.file.modified || e.size !== f.file.size
-      }),
-    )
-    const changedIds = new Set(g.files.filter((_, k) => changed[k]).map((f) => f.file.id))
-    const missingVoices = g.files.some((f) => f.kind === 'voice' && f.voice && !prev?.voices[f.voice])
-    const goneVoices = Object.keys(prev?.voices ?? {}).some((v) => !g.files.some((f) => f.kind === 'voice' && f.voice === v))
-    if (prev && !force && !changed.some(Boolean) && !missingVoices && !goneVoices && (prev as Song & { v?: number }).v === ANALYSIS_VERSION) {
+    const { prev, changedIds, needed } = await songStatus(g)
+    if (!needed && !force) {
       step++
       continue
     }
