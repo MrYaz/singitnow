@@ -90,7 +90,7 @@ export default function Home() {
       const secs = learnable(s.voices[vn].sections)
       for (let m = 0; m < LEVELS.length; m++) {
         const part = secs.find((x) => !isDone(levels[s.id]?.[x.i], m))
-        if (part) return { song: s, voice: vn, section: part.i, level: m }
+        if (part) return { song: s, voice: vn, section: part.i, level: m, started: secs.some((x) => (levels[s.id]?.[x.i] ?? 0) > 0) }
       }
     }
     return null
@@ -117,7 +117,7 @@ export default function Home() {
   }
 
   return (
-    <main className="px-4 pt-[max(env(safe-area-inset-top),16px)] pb-10">
+    <main className={`px-4 pt-[max(env(safe-area-inset-top),16px)] ${refine ? 'pb-16' : 'pb-10'}`}>
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1 text-lg font-black text-warm-500" title="Dagar i rad">
           🔥 {streak?.count ?? 0}
@@ -153,21 +153,13 @@ export default function Home() {
             {due?.length
               ? `${due.length} rader att repetera, cirka ${Math.max(2, Math.round(Math.min(12, due.length) * 0.4))} min`
               : next
-                ? `Fortsätt: ${next.song.title}, ${LEVELS[next.level].name.toLowerCase()}`
+                ? `${next.started ? 'Fortsätt' : 'Börja'}: ${next.song.title}, ${LEVELS[next.level].name.toLowerCase()}`
                 : 'Allt är repeterat. Snyggt jobbat!'}
           </p>
         </div>
       </button>
 
       {syncMsg && <p className="mt-3 rounded-2xl bg-good-100 p-3 text-sm font-bold text-good-600">{syncMsg}</p>}
-      {refine && (
-        <div className="mt-3 rounded-2xl bg-brand-50 p-3 text-sm">
-          <p className="font-bold text-brand-700">{refine.text}</p>
-          <Bar value={refine.share} className="mt-2 h-2" />
-          <p className="mt-1 text-xs text-gray-500">Appen lyssnar efter varje ord så att texten följer sången exakt. Du kan öva under tiden.</p>
-        </div>
-      )}
-
       <h2 className="mt-7 mb-3 text-lg font-black">Låtar</h2>
       <ul className="space-y-3">
         {songs.map((s) => {
@@ -216,6 +208,12 @@ export default function Home() {
         />
         <p className="mt-3 text-xs text-gray-500">Varje stämma har sina egna framsteg.</p>
       </Sheet>
+
+      {refine && (
+        <p className="fixed inset-x-0 bottom-0 bg-white/90 px-4 pt-1.5 pb-[max(env(safe-area-inset-bottom),6px)] text-center text-xs text-gray-500 backdrop-blur" aria-live="polite" title={refine.text}>
+          Finjusterar synken i bakgrunden, du kan fortsätta att öva. {Math.round(refine.share * 100)} %
+        </p>
+      )}
     </main>
   )
 }
