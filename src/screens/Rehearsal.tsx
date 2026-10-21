@@ -92,6 +92,8 @@ export default function Rehearsal({ songId }: { songId: string }) {
   }
   const toggle = () => (playing ? mixer.stop() : void play(loop ? loop.from : t))
   const loopIt = (from: number, to: number, label: string) => {
+    // A second tap on what is already looping turns the loop off and lets the song play on.
+    if (loop?.label === label) return clearLoop()
     const l = { from: Math.max(0, from), to, label }
     setLoop(l)
     void play(l.from, l)
