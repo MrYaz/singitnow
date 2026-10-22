@@ -37,14 +37,22 @@ export async function refineVoice(song: Song, voice: string, onProgress?: (share
   })
 }
 
-/** Voices that still have the rough timing, for the songs and voices you practise. */
+/**
+ * Voices that still have the rough timing: first the voice you practise in every song, then all
+ * the other voices, since Stämrep and Körrep show what they sing next to yours.
+ */
 export function needsRefine(songs: Song[], pick: (s: Song) => string | null): { song: Song; voice: string }[] {
-  const out: { song: Song; voice: string }[] = []
-  for (const song of songs) {
+  const rough = (song: Song, v: string) => song.voices[v] && song.voices[v].timing !== 'speech'
+  const mine = songs.flatMap((song) => {
     const v = pick(song)
-    if (v && song.voices[v] && song.voices[v].timing !== 'speech') out.push({ song, voice: v })
-  }
-  return out
+    return v && rough(song, v) ? [{ song, voice: v }] : []
+  })
+  const rest = songs.flatMap((song) =>
+    Object.keys(song.voices)
+      .filter((v) => v !== pick(song) && rough(song, v))
+      .map((voice) => ({ song, voice })),
+  )
+  return [...mine, ...rest]
 }
 
 // ---- Background queue ----------------------------------------------------
@@ -64,7 +72,7 @@ export function onRefineStatus(f: (s: Status) => void): () => void {
   return () => listeners.delete(f)
 }
 
-/** Refines, one at a time, every voice you practise that still has rough timing. */
+/** Refines, one at a time, every voice that still has rough timing, yours first. */
 export async function refineInBackground(pick: (s: Song) => string | null): Promise<void> {
   if (running) return
   running = true
