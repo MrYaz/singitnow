@@ -33,13 +33,19 @@ function fakeDrive(songFolders: string[]): Item[] {
   return items
 }
 
-async function serve(page: Page, songFolders: string[]) {
+async function serve(page: Page, songFolders: string[], refuse = 0) {
   const items = fakeDrive(songFolders)
+  // The first `refuse` downloads get an answer without CORS headers, like Google's throttling.
+  let refused = 0
   await page.route(/googleapis\.com\/drive\/v3\/files/, async (route) => {
     const url = new URL(route.request().url())
     const cors = { 'access-control-allow-origin': '*' }
     const fileId = url.pathname.split('/files/')[1]
     if (fileId) {
+      if (refused < refuse) {
+        refused++
+        return route.fulfill({ status: 429, body: 'Too many requests' })
+      }
       const it = items.find((x) => x.id === fileId)!
       return route.fulfill({ status: 200, headers: cors, body: readFileSync(it.path!) })
     }
@@ -75,4 +81,20 @@ test('asks before fetching new songs from Drive', async ({ page }) => {
   await expect(page.getByText('Dagens pass')).toBeVisible()
   await page.waitForTimeout(1500)
   await expect(page.getByText('Det har kommit nytt i körens mapp')).toHaveCount(0)
+
+  // Looking again from the settings: progress shows in the button.
+  await page.getByRole('button', { name: 'Inställningar' }).click()
+  await page.getByRole('button', { name: 'Leta efter nya låtar i Drive' }).click()
+  await expect(page.getByText('Inga nya låtar.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Leta efter nya låtar i Drive' })).toBeEnabled()
+})
+
+test('a song Google turns away is tried again', async ({ page }) => {
+  test.setTimeout(300_000)
+  const songs = readdirSync(DIR!).sort()
+  // Four refusals: the first file fails all its retries, so the song waits and is tried again.
+  await serve(page, songs.slice(0, 1), 4)
+  await page.goto('./?drive=ROOTFOLDER12345678901')
+  await expect(page.getByText(/krånglade\. Försöker igen om/)).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByText('✓ 1 låt inlästa')).toBeVisible({ timeout: 180_000 })
 })

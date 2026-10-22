@@ -1,6 +1,6 @@
 import { db } from './db'
 import { folderTitle, groupSongs, type SongGroup } from './group'
-import type { SourceFile } from './sources'
+import { DriveError, type SourceFile } from './sources'
 import type { Song, StoredFile, VoiceTrack } from './types'
 import { readLyricsPdf } from './pdf/load'
 import { analyzeInWorker, decodeForAnalysis } from './audio/analyze'
@@ -67,86 +67,102 @@ export async function importSources(sources: SourceFile[], onProgress: Progress,
   const groups = groupSongs(sources)
   if (!groups.length) throw new Error('Hittade inga låtar. Varje låt behöver minst en Musik-fil och en stämfil.')
   const imported: Song[] = []
-  const failed: string[] = []
+  let failed: { g: SongGroup; name: string; url?: string }[] = []
   let step = 0
-  const total = groups.length
-  for (const g of groups) {
-    const { prev, changedIds, needed } = await songStatus(g)
-    if (!needed && !force) {
-      step++
-      continue
-    }
-    const name = folderTitle(g.folder)
-    try {
-      onProgress(`Hämtar ${name}`, step, total)
-      const stored: StoredFile[] = []
-      let n = 0
-      for (const f of g.files) {
-        stored.push(await storeFile(g, f, () => onProgress(`Hämtar ${name} (${++n}/${g.files.length})`, step, total)))
-      }
-      const musik = stored.find((s) => s.kind === 'musik')!
-      const alla = stored.find((s) => s.kind === 'alla')
-      onProgress(`Lyssnar på ${name}`, step + 0.1, total)
-      const music = await decodeForAnalysis(musik.blob)
-      // Rebuilt from the current files only, so voices removed from the folder disappear.
-      const voices: Record<string, VoiceTrack> = {}
-      const voiceFiles = stored.filter((s) => s.kind === 'voice' && s.voice)
-      let title = prev?.title ?? name
-      for (let i = 0; i < voiceFiles.length; i++) {
-        const vf = voiceFiles[i]
-        const pdf = stored.find((s) => s.kind === 'pdf' && s.voice === vf.voice)
-        if (!pdf) continue
-        const old = prev?.voices[vf.voice!]
-        const same = old && old.audioFileId === vf.id && old.pdfFileId === pdf.id && !changedIds.has(vf.id) && !changedIds.has(pdf.id)
-        if (same && !force && (prev as Song & { v?: number }).v === ANALYSIS_VERSION) {
-          // Unchanged files: keep the analysis, including any timings adjusted by hand.
-          voices[vf.voice!] = old
-          continue
-        }
-        onProgress(`Analyserar ${name}: ${vf.voice}`, step + 0.2 + (0.8 * i) / voiceFiles.length, total)
-        const lyrics = await readLyricsPdf(pdf.blob)
-        if (lyrics.title.includes(' - ')) title = lyrics.title.split(' - ')[0].trim()
-        const voice = await decodeForAnalysis(vf.blob)
-        const res = await analyzeInWorker(voice.pcm, music.pcm)
-        // Quick first timing from pauses in the singing; refine.ts improves it later with the speech model.
-        const sections = alignLyrics(lyrics, res.spans, voice.pcm.length / ANALYSIS_RATE)
-        voices[vf.voice!] = {
-          voice: vf.voice!,
-          audioFileId: vf.id,
-          pdfFileId: pdf.id,
-          title: lyrics.title,
-          sections,
-          timing: 'pauses',
-          spans: res.spans,
-          activity: res.activity,
-          analyzedAt: Date.now(),
-        }
-      }
-      if (!Object.keys(voices).length) {
+  let total = groups.length
+  const pass = async (list: SongGroup[]) => {
+    for (const g of list) {
+      const { prev, changedIds, needed } = await songStatus(g)
+      if (!needed && !force) {
         step++
         continue
       }
-      const song: Song & { v: number } = {
-        id: g.id,
-        title,
-        folder: g.folder,
-        order: g.order,
-        duration: music.duration,
-        allaFileId: alla?.id,
-        musikFileId: musik.id,
-        voices,
-        addedAt: prev?.addedAt ?? Date.now(),
-        v: ANALYSIS_VERSION,
+      const name = folderTitle(g.folder)
+      try {
+        onProgress(`Hämtar ${name}`, step, total)
+        const stored: StoredFile[] = []
+        let n = 0
+        for (const f of g.files) {
+          stored.push(await storeFile(g, f, () => onProgress(`Hämtar ${name} (${++n}/${g.files.length})`, step, total)))
+        }
+        const musik = stored.find((s) => s.kind === 'musik')!
+        const alla = stored.find((s) => s.kind === 'alla')
+        onProgress(`Lyssnar på ${name}`, step + 0.1, total)
+        const music = await decodeForAnalysis(musik.blob)
+        // Rebuilt from the current files only, so voices removed from the folder disappear.
+        const voices: Record<string, VoiceTrack> = {}
+        const voiceFiles = stored.filter((s) => s.kind === 'voice' && s.voice)
+        let title = prev?.title ?? name
+        for (let i = 0; i < voiceFiles.length; i++) {
+          const vf = voiceFiles[i]
+          const pdf = stored.find((s) => s.kind === 'pdf' && s.voice === vf.voice)
+          if (!pdf) continue
+          const old = prev?.voices[vf.voice!]
+          const same = old && old.audioFileId === vf.id && old.pdfFileId === pdf.id && !changedIds.has(vf.id) && !changedIds.has(pdf.id)
+          if (same && !force && (prev as Song & { v?: number }).v === ANALYSIS_VERSION) {
+            // Unchanged files: keep the analysis, including any timings adjusted by hand.
+            voices[vf.voice!] = old
+            continue
+          }
+          onProgress(`Analyserar ${name}: ${vf.voice}`, step + 0.2 + (0.8 * i) / voiceFiles.length, total)
+          const lyrics = await readLyricsPdf(pdf.blob)
+          if (lyrics.title.includes(' - ')) title = lyrics.title.split(' - ')[0].trim()
+          const voice = await decodeForAnalysis(vf.blob)
+          const res = await analyzeInWorker(voice.pcm, music.pcm)
+          // Quick first timing from pauses in the singing; refine.ts improves it later with the speech model.
+          const sections = alignLyrics(lyrics, res.spans, voice.pcm.length / ANALYSIS_RATE)
+          voices[vf.voice!] = {
+            voice: vf.voice!,
+            audioFileId: vf.id,
+            pdfFileId: pdf.id,
+            title: lyrics.title,
+            sections,
+            timing: 'pauses',
+            spans: res.spans,
+            activity: res.activity,
+            analyzedAt: Date.now(),
+          }
+        }
+        if (!Object.keys(voices).length) {
+          step++
+          continue
+        }
+        const song: Song & { v: number } = {
+          id: g.id,
+          title,
+          folder: g.folder,
+          order: g.order,
+          duration: music.duration,
+          allaFileId: alla?.id,
+          musikFileId: musik.id,
+          voices,
+          addedAt: prev?.addedAt ?? Date.now(),
+          v: ANALYSIS_VERSION,
+        }
+        await db.songs.put(song)
+        imported.push(song)
+        onProgress(`${title} klar`, step + 1, total)
+      } catch (e) {
+        // One song failing should not stop the rest. It is fetched again next time, since it is not saved.
+        console.warn('Could not import', name, e instanceof DriveError ? e.url : '', e)
+        failed.push({ g, name, url: e instanceof DriveError ? e.url : undefined })
       }
-      await db.songs.put(song)
-      imported.push(song)
-      onProgress(`${title} klar`, step + 1, total)
-    } catch (e) {
-      // One song failing should not stop the rest. It is fetched again next time, since it is not saved.
-      console.warn('Could not import', name, e)
-      failed.push(name)
+      step++
     }
-    step++
+  }
+  await pass(groups)
+  // Google sometimes turns requests away for a short while. Wait, then try the failed songs once more.
+  const again = failed.filter((f) => f.url)
+  if (again.length) {
+    const names = again.map((f) => f.name).join(' och ')
+    for (let s = 30; s > 0; s--) {
+      onProgress(`${names} krånglade. Försöker igen om ${s} s…`, step, total)
+      await new Promise((r) => setTimeout(r, 1000))
+    }
+    failed = failed.filter((f) => !f.url)
+    step = 0
+    total = again.length
+    await pass(again.map((f) => f.g))
   }
   if (failed.length) throw new ImportError(imported, failed)
   return imported
@@ -155,11 +171,11 @@ export async function importSources(sources: SourceFile[], onProgress: Progress,
 /** Some songs could not be fetched; the others were imported. */
 export class ImportError extends Error {
   imported: Song[]
-  failed: string[]
-  constructor(imported: Song[], failed: string[]) {
+  failed: { name: string; url?: string }[]
+  constructor(imported: Song[], failed: { name: string; url?: string }[]) {
     const ok = imported.length ? `${imported.length} ${imported.length === 1 ? 'låt' : 'låtar'} inlästa, men ` : ''
-    super(`${ok}${failed.join(' och ')} gick inte att hämta just nu. Google Drive krånglar ibland en stund. Försök igen om några minuter, då hämtas bara det som saknas.`)
+    super(`${ok}${failed.map((f) => f.name).join(' och ')} gick inte att hämta just nu. Google Drive krånglar ibland en stund. Försök igen om några minuter, då hämtas bara det som saknas.`)
     this.imported = imported
-    this.failed = failed
+    this.failed = failed.map(({ name, url }) => ({ name, url }))
   }
 }

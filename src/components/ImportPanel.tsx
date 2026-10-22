@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { importSources } from '../lib/importer'
+import { ImportError, importSources } from '../lib/importer'
 import { DRIVE_KEY, cleanDriveUrl, fromFileList, driveFolderId, listDriveFolder, takeLinkedDrive, type SourceFile } from '../lib/sources'
 import { saveSettings } from '../lib/learn'
 import { useSettings } from '../settings'
@@ -12,6 +12,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
   const [msg, setMsg] = useState('')
   const [pct, setPct] = useState(0)
   const [err, setErr] = useState('')
+  const [failed, setFailed] = useState<{ name: string; url?: string }[]>([])
   const folderRef = useRef<HTMLInputElement>(null)
   const filesRef = useRef<HTMLInputElement>(null)
 
@@ -19,6 +20,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
     setBusy(true)
     onBusy?.(true)
     setErr('')
+    setFailed([])
     try {
       setMsg('Letar efter låtar…')
       const files = await get()
@@ -36,6 +38,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
     } catch (e) {
       setMsg('')
       setErr(e instanceof Error ? e.message : String(e))
+      if (e instanceof ImportError) setFailed(e.failed.filter((f) => f.url))
     } finally {
       setBusy(false)
       onBusy?.(false)
@@ -124,7 +127,22 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
           <p className="font-bold">{msg}</p>
         </div>
       )}
-      {err && <p className="rounded-2xl bg-warm-100 p-3 text-sm font-semibold text-amber-900">{err}</p>}
+      {err && (
+        <div className="space-y-2 rounded-2xl bg-warm-100 p-3 text-sm font-semibold text-amber-900">
+          <p>{err}</p>
+          {failed.length > 0 && (
+            <div className="space-y-1 text-xs font-normal">
+              <p>För felsökning: länken visar vad Google svarar på filen som inte kom fram. Laddas filen ner fungerar det igen.</p>
+              {failed.map((f) => (
+                // unsafe-url sends the app's address along, which the API key needs.
+                <a key={f.name} className="block font-bold underline" href={f.url} target="_blank" rel="noopener" referrerPolicy="unsafe-url">
+                  Visa Googles svar för {f.name}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
