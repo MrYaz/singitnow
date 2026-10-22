@@ -19,6 +19,12 @@ test('import, learn and rehearse', async ({ page }) => {
   await expect(page.getByText('Sopran + Sopran 1')).toBeVisible()
   await expect(page.getByText('Hej Ella! 👋')).toBeVisible()
   await page.screenshot({ path: 'test-results/02-home.png' })
+  // The three song buttons fit on a narrow phone.
+  await page.setViewportSize({ width: 340, height: 740 })
+  const box = await page.getByRole('button', { name: 'Körrep' }).first().boundingBox()
+  expect(box!.x + box!.width).toBeLessThanOrEqual(340 - 16)
+  await page.screenshot({ path: 'test-results/02b-home-narrow.png' })
+  await page.setViewportSize({ width: 412, height: 839 })
 
   await page.getByRole('button', { name: 'Textträning' }).first().click()
   await expect(page.getByRole('radiogroup', { name: 'Inlärningssätt' })).toBeVisible()
