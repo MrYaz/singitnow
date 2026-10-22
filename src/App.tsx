@@ -29,17 +29,29 @@ export default function App() {
     })()
   }, [])
 
+  // Each screen gets a browser history entry, so the phone's back button steps back in the app.
+  useEffect(() => {
+    const onPop = () => setStack((st) => (st.length > 1 ? st.slice(0, -1) : st))
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
   const nav = useMemo(
     () => ({
       go: (s: Screen) => {
         setStack((st) => [...st, s])
+        history.pushState({ singitnow: true }, '')
         window.scrollTo(0, 0)
       },
       replace: (s: Screen) => {
         setStack((st) => [...st.slice(0, -1), s])
         window.scrollTo(0, 0)
       },
-      back: () => setStack((st) => (st.length > 1 ? st.slice(0, -1) : st)),
+      // Going back through history keeps the app and the browser in step; popstate pops the screen.
+      back: () => {
+        if (history.state?.singitnow) history.back()
+        else setStack((st) => (st.length > 1 ? st.slice(0, -1) : st))
+      },
     }),
     [],
   )
