@@ -119,7 +119,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
             <p className="font-bold">{msg}</p>
             <Bar value={pct} />
             <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma för att hitta raderna. Det tar en liten stund per låt.</p>
-            <p className="text-xs text-gray-500">Låt appen vara öppen så länge. Skärmen hålls tänd tills importen är klar.</p>
+            <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">💡 Låt skärmen vara på tills allt är hämtat, annars stannar nedladdningen. Appen håller den tänd så länge, och när importen är klar släcks skärmen som vanligt igen.</p>
           </div>
         </div>
       )}

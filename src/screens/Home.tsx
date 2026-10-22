@@ -250,6 +250,7 @@ export default function Home() {
               <div className="space-y-2" aria-live="polite">
                 <p className="text-sm font-bold">{fetching.msg}</p>
                 <Bar value={fetching.share} />
+                <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">💡 Låt skärmen vara på tills allt är hämtat, annars stannar nedladdningen. Appen håller den tänd så länge, och när importen är klar släcks skärmen som vanligt igen.</p>
               </div>
             ) : (
               <div className="flex gap-2 pt-1">
