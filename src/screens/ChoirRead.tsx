@@ -5,6 +5,7 @@ import { pickVoice, sortVoices } from '../lib/names'
 import { useNav } from '../nav'
 import { useSettings } from '../settings'
 import { keepAwake } from '../lib/wakelock'
+import { withAllVoices } from '../lib/merge'
 import { LineText, OthersText, TopBar, othersVoices } from '../components/ui'
 
 const SIZES = [12, 14, 16, 18, 21, 24, 28, 32, 38, 44]
@@ -46,7 +47,6 @@ export default function ChoirRead({ songId }: { songId: string }) {
   if (!songs || !song) return null
   const voices = sortVoices(Object.keys(song.voices))
   const shown = voice && song.voices[voice] ? voice : (pickVoice(song.voices, settings.voices) ?? voices[0])
-  const track = song.voices[shown]
   const at = songs.indexOf(song)
   const prev = songs[at - 1]
   const next = songs[at + 1]
@@ -88,7 +88,7 @@ export default function ChoirRead({ songId }: { songId: string }) {
         </p>
 
         <div className="mt-6 space-y-8" style={{ fontSize: size, lineHeight: 1.5 }}>
-          {track.sections.map((s, i) => {
+          {withAllVoices(song, shown).map((s, i) => {
             const who = othersVoices(s.others)
             return (
               <section key={i} className="border-l-2 border-brand-100 pl-2.5 sm:border-l-4 sm:pl-4">
@@ -102,7 +102,7 @@ export default function ChoirRead({ songId }: { songId: string }) {
                     <LineText line={l} />
                   </p>
                 ))}
-                {s.others.length > 0 && <OthersText others={s.others} className={`text-gray-500 ${s.lines.length ? 'mt-2 text-[0.8em]' : ''}`} />}
+                {s.others.length > 0 && <OthersText others={s.others} labels={s.lines.length > 0} className={`text-gray-500 ${s.lines.length ? 'mt-2 text-[0.8em]' : ''}`} />}
               </section>
             )
           })}
