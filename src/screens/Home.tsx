@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
 import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../lib/learn'
 import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
-import { pickVoice, sortVoices } from '../lib/names'
+import { pickVoice, shortVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
 import { ImportError, importSources, songsToFetch } from '../lib/importer'
 import type { SourceFile } from '../lib/sources'
@@ -154,8 +154,8 @@ export default function Home() {
             {xp ?? 0} / {goal} XP idag
           </p>
         </div>
-        <button className="max-w-[45%] truncate rounded-full bg-brand-100 px-3 py-1.5 text-sm font-extrabold text-brand-700" onClick={() => setVoiceSheet(true)}>
-          {voiceLabel(mine)} ▾
+        <button className="max-w-[45%] truncate rounded-full bg-brand-100 px-3 py-1.5 text-sm font-extrabold text-brand-700" aria-label={`Mina stämmor: ${voiceLabel(mine)}`} onClick={() => setVoiceSheet(true)}>
+          {mine.length ? mine.map(shortVoice).join(' + ') : voiceLabel(mine)} ▾
         </button>
         <button aria-label="Inställningar" className="grid h-9 w-9 place-items-center rounded-full text-xl active:bg-brand-100" onClick={() => nav.go({ name: 'settings' })}>
           ⚙️
