@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
 import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../lib/learn'
 import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
-import { pickVoice, sortVoices } from '../lib/names'
+import { pickVoice, shortVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
 import { ImportError, importSources, songsToFetch } from '../lib/importer'
 import type { SourceFile } from '../lib/sources'
@@ -15,6 +15,9 @@ import { Bar, Sheet } from '../components/ui'
 import type { Song } from '../lib/types'
 
 let checkedDrive = false
+
+// Three equal buttons that still fit on a narrow phone.
+const songBtn = 'btn-soft min-w-0 px-1 py-2.5 text-sm tracking-normal sm:text-base'
 
 export default function Home() {
   const nav = useNav()
@@ -142,17 +145,17 @@ export default function Home() {
   return (
     <main className={`px-4 pt-[max(env(safe-area-inset-top),16px)] ${refine ? 'pb-16' : 'pb-10'}`}>
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1 text-lg font-black text-warm-500" title="Dagar i rad">
+        <div className="flex shrink-0 items-center gap-1 text-lg font-black whitespace-nowrap text-warm-500" title="Dagar i rad">
           🔥 {streak?.count ?? 0}
         </div>
         <div className="flex-1">
           <Bar value={(xp ?? 0) / goal} />
-          <p className="mt-1 text-xs font-bold text-gray-500">
+          <p className="mt-1 text-xs font-bold whitespace-nowrap text-gray-500">
             {xp ?? 0} / {goal} XP idag
           </p>
         </div>
-        <button className="rounded-full bg-brand-100 px-3 py-1.5 text-sm font-extrabold text-brand-700" onClick={() => setVoiceSheet(true)}>
-          {voiceLabel(mine)} ▾
+        <button className="max-w-[45%] truncate rounded-full bg-brand-100 px-3 py-1.5 text-sm font-extrabold text-brand-700" aria-label={`Mina stämmor: ${voiceLabel(mine)}`} onClick={() => setVoiceSheet(true)}>
+          {mine.length ? mine.map(shortVoice).join(' + ') : voiceLabel(mine)} ▾
         </button>
         <button aria-label="Inställningar" className="grid h-9 w-9 place-items-center rounded-full text-xl active:bg-brand-100" onClick={() => nav.go({ name: 'settings' })}>
           ⚙️
@@ -205,14 +208,14 @@ export default function Home() {
                   <p className="text-xs text-gray-500">Ingen av dina stämmor finns i den här låten</p>
                 )}
               </button>
-              <div className="mt-3 flex gap-2">
-                <button className="btn-soft flex-1 py-2" onClick={() => nav.go({ name: 'rehearsal', songId: s.id })}>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <button className={songBtn} onClick={() => nav.go({ name: 'rehearsal', songId: s.id })}>
                   Stämrep
                 </button>
-                <button className="btn-soft flex-1 py-2" disabled={!p} onClick={() => nav.go({ name: 'song', songId: s.id })}>
+                <button className={songBtn} disabled={!p} onClick={() => nav.go({ name: 'song', songId: s.id })}>
                   Textträning
                 </button>
-                <button className="btn-soft flex-1 py-2" onClick={() => nav.go({ name: 'read', songId: s.id })}>
+                <button className={songBtn} onClick={() => nav.go({ name: 'read', songId: s.id })}>
                   Körrep
                 </button>
               </div>

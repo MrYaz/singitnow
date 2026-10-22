@@ -6,7 +6,7 @@ import { useNav } from '../nav'
 import { useSettings } from '../settings'
 import { LineText, OthersText, TopBar, othersVoices } from '../components/ui'
 
-const SIZES = [18, 21, 24, 28, 32, 38, 44]
+const SIZES = [12, 14, 16, 18, 21, 24, 28, 32, 38, 44]
 const SIZE_KEY = 'singitnow.readSize'
 
 function savedSize(): number {
@@ -81,7 +81,7 @@ export default function ChoirRead({ songId }: { songId: string }) {
           </div>
         }
       />
-      <main className="mx-auto w-full max-w-3xl px-5 pb-12">
+      <main className="w-full px-3 pb-12 sm:px-6">
         <h2 className="mt-2 text-3xl leading-tight font-black">{song.title}</h2>
         {voices.length > 1 && (
           <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Stämma">
@@ -105,7 +105,7 @@ export default function ChoirRead({ songId }: { songId: string }) {
           {track.sections.map((s, i) => {
             const who = othersVoices(s.others)
             return (
-              <section key={i} className="border-l-4 border-brand-100 pl-4">
+              <section key={i} className="border-l-2 border-brand-100 pl-2.5 sm:border-l-4 sm:pl-4">
                 <p className="mb-1 text-sm font-black tracking-wide text-brand-600 uppercase">
                   {clock(s.pdfStart)}
                   {s.rest && <span className="ml-2 font-bold text-gray-500 normal-case">tyst{who.length > 0 && ` (${who.join(', ')})`}</span>}

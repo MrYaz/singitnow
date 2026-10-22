@@ -16,9 +16,15 @@ test('import, learn and rehearse', async ({ page }) => {
   await page.getByPlaceholder('Ditt förnamn').fill('Ella')
   await page.getByRole('button', { name: 'Kör igång' }).click()
   await expect(page.getByText('Dagens pass')).toBeVisible()
-  await expect(page.getByText('Sopran + Sopran 1')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Mina stämmor: Sopran + Sopran 1' })).toHaveText('S + S1 ▾')
   await expect(page.getByText('Hej Ella! 👋')).toBeVisible()
   await page.screenshot({ path: 'test-results/02-home.png' })
+  // The three song buttons fit on a narrow phone.
+  await page.setViewportSize({ width: 340, height: 740 })
+  const box = await page.getByRole('button', { name: 'Körrep' }).first().boundingBox()
+  expect(box!.x + box!.width).toBeLessThanOrEqual(340 - 16)
+  await page.screenshot({ path: 'test-results/02b-home-narrow.png' })
+  await page.setViewportSize({ width: 412, height: 839 })
 
   await page.getByRole('button', { name: 'Textträning' }).first().click()
   await expect(page.getByRole('radiogroup', { name: 'Inlärningssätt' })).toBeVisible()
@@ -74,6 +80,11 @@ test('import, learn and rehearse', async ({ page }) => {
   await page.getByRole('button', { name: 'Alt 2', exact: true }).click()
   await expect(page.getByText(/tyst \(Sopraner\)/).first()).toBeVisible()
   await page.screenshot({ path: 'test-results/08-read.png' })
+  // Small sizes, so lines fit a phone without wrapping.
+  const smaller = page.getByRole('button', { name: 'Mindre text' })
+  while (await smaller.isEnabled()) await smaller.click()
+  await expect(page.getByRole('button', { name: 'Mindre text' })).toBeDisabled()
+  await page.screenshot({ path: 'test-results/08a-read-small.png' })
   await page.setViewportSize({ width: 820, height: 1180 })
   await page.screenshot({ path: 'test-results/08b-read-tablet.png' })
   await page.getByRole('button', { name: /This is me ›/ }).click()
