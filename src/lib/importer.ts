@@ -190,7 +190,7 @@ export class ImportError extends Error {
   failed: { name: string; url?: string }[]
   constructor(imported: Song[], failed: { name: string; url?: string }[]) {
     const ok = imported.length ? `${imported.length} ${imported.length === 1 ? 'låt' : 'låtar'} inlästa, men ` : ''
-    super(`${ok}${songList(failed.map((f) => f.name))} gick inte att hämta just nu. Google Drive krånglar ibland en stund. Försök igen om några minuter, då hämtas bara det som saknas.`)
+    super(`${ok}${songList(failed.map((f) => f.name))} gick inte att hämta just nu. Google stänger ibland av ett nätverk en stund när det har hämtat mycket. Byt till mobildata (stäng av wifi) och försök igen, eller vänta några timmar. Det som redan är hämtat sparas.`)
     this.imported = imported
     this.failed = failed.map(({ name, url }) => ({ name, url }))
   }
