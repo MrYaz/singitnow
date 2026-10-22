@@ -165,9 +165,8 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
   // Google sometimes turns requests away for a short while. Wait, then try the failed songs once more.
   const again = failed.filter((f) => f.url)
   if (again.length) {
-    const names = again.map((f) => f.name).join(' och ')
     for (let s = 30; s > 0; s--) {
-      onProgress(`${names} krånglade. Försöker igen om ${s} s…`, step, total)
+      onProgress(`Google Drive svarar inte just nu för ${songList(again.map((f) => f.name))}. Försöker igen om ${s} s…`, step, total)
       await new Promise((r) => setTimeout(r, 1000))
     }
     failed = failed.filter((f) => !f.url)
@@ -179,13 +178,19 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
   return imported
 }
 
+/** "Fix you", "Fix you och This is me", or "5 låtar" when there are many. */
+export function songList(names: string[]): string {
+  if (names.length > 2) return `${names.length} låtar`
+  return names.join(' och ')
+}
+
 /** Some songs could not be fetched; the others were imported. */
 export class ImportError extends Error {
   imported: Song[]
   failed: { name: string; url?: string }[]
   constructor(imported: Song[], failed: { name: string; url?: string }[]) {
     const ok = imported.length ? `${imported.length} ${imported.length === 1 ? 'låt' : 'låtar'} inlästa, men ` : ''
-    super(`${ok}${failed.map((f) => f.name).join(' och ')} gick inte att hämta just nu. Google Drive krånglar ibland en stund. Försök igen om några minuter, då hämtas bara det som saknas.`)
+    super(`${ok}${songList(failed.map((f) => f.name))} gick inte att hämta just nu. Google Drive krånglar ibland en stund. Försök igen om några minuter, då hämtas bara det som saknas.`)
     this.imported = imported
     this.failed = failed.map(({ name, url }) => ({ name, url }))
   }

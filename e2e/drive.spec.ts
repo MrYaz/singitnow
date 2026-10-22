@@ -95,6 +95,6 @@ test('a song Google turns away is tried again', async ({ page }) => {
   // Four refusals: the first file fails all its retries, so the song waits and is tried again.
   await serve(page, songs.slice(0, 1), 4)
   await page.goto('./?drive=ROOTFOLDER12345678901')
-  await expect(page.getByText(/krånglade\. Försöker igen om/)).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByText(/svarar inte just nu för .*Försöker igen om/)).toBeVisible({ timeout: 120_000 })
   await expect(page.getByText('✓ 1 låt inlästa')).toBeVisible({ timeout: 180_000 })
 })
