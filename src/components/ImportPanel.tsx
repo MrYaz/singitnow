@@ -123,7 +123,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
           <p>{err}</p>
           {failed.length > 0 && (
             <div className="space-y-1 text-xs font-normal">
-              <p>För felsökning: länken visar vad Google svarar på filen som inte kom fram. Laddas filen ner fungerar det igen.</p>
+              <p>För felsökning: länken visar vad Google svarar på filen som inte kom fram. Står det "We're sorry" är ditt nätverk tillfälligt spärrat. Laddas filen ner fungerar det igen.</p>
               {failed.map((f) => (
                 // unsafe-url sends the app's address along, which the API key needs.
                 <a key={f.name} className="block font-bold underline" href={f.url} target="_blank" rel="noopener" referrerPolicy="unsafe-url">
