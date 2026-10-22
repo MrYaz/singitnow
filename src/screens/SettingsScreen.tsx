@@ -16,6 +16,9 @@ export default function SettingsScreen() {
   const { settings, reload } = useSettings()
   const songs = useLiveQuery(() => db.songs.orderBy('order').toArray(), [])
   const [msg, setMsg] = useState('')
+  /** A running import, shown in its own button, which is disabled meanwhile. */
+  const [working, setWorking] = useState<{ which: 'drive' | 'all'; text: string; share: number } | null>(null)
+  const progress = (which: 'drive' | 'all') => (text: string, done = 0, total = 1) => setWorking({ which, text, share: total ? done / total : 0 })
   const voices = sortVoices([...new Set((songs ?? []).flatMap((s) => Object.keys(s.voices)))])
   const set = async (p: Parameters<typeof saveSettings>[0]) => {
     await saveSettings(p)
@@ -28,11 +31,15 @@ export default function SettingsScreen() {
     // Rebuild folder structure from the stored song ids so grouping matches the original import.
     const bySong = new Map(songs?.map((s) => [s.id, s.folder]))
     for (const s of sources) s.path = [bySong.get(files.find((f) => f.id === s.id)!.songId) ?? '']
+    setMsg('')
+    progress('all')('Analyserar…')
     try {
-      await importSources(sources, (m) => setMsg(m), true)
+      await importSources(sources, progress('all'), true)
       setMsg('Alla låtar är analyserade igen.')
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWorking(null)
     }
   }
 
@@ -81,18 +88,23 @@ export default function SettingsScreen() {
           <h2 className="font-black">Låtar</h2>
           {DRIVE_KEY && settings.driveUrl && (
             <button
-              className="btn-ghost w-full"
+              className="btn-ghost w-full disabled:opacity-70"
+              disabled={!!working}
+              aria-live="polite"
               onClick={async () => {
-                setMsg('Letar efter nya låtar…')
+                setMsg('')
+                progress('drive')('Letar efter nya låtar…')
                 try {
-                  const n = await importSources(await listDriveFolder(settings.driveUrl), (m) => setMsg(m))
-                  setMsg(n.length ? `${n.length} låtar uppdaterade.` : 'Inga nya låtar.')
+                  const n = await importSources(await listDriveFolder(settings.driveUrl), progress('drive'))
+                  setMsg(n.length ? `${n.length} ${n.length === 1 ? 'låt' : 'låtar'} uppdaterade.` : 'Inga nya låtar.')
                 } catch (e) {
                   setMsg(e instanceof Error ? e.message : String(e))
+                } finally {
+                  setWorking(null)
                 }
               }}
             >
-              Leta efter nya låtar i Drive
+              {working?.which === 'drive' ? <WorkingLabel {...working} /> : 'Leta efter nya låtar i Drive'}
             </button>
           )}
           {DRIVE_KEY && shareLink(settings.driveUrl) && (
@@ -124,8 +136,8 @@ export default function SettingsScreen() {
               </li>
             ))}
           </ul>
-          <button className="btn-ghost w-full" onClick={reanalyze}>
-            Analysera alla låtar igen
+          <button className="btn-ghost w-full disabled:opacity-70" disabled={!!working} aria-live="polite" onClick={reanalyze}>
+            {working?.which === 'all' ? <WorkingLabel {...working} /> : 'Analysera alla låtar igen'}
           </button>
           {msg && <p className="text-sm font-bold text-brand-700">{msg}</p>}
         </section>
@@ -150,5 +162,13 @@ export default function SettingsScreen() {
         </section>
       </main>
     </>
+  )
+}
+
+function WorkingLabel({ text, share }: { text: string; share: number }) {
+  return (
+    <span className="min-w-0 truncate text-sm">
+      {text} {share > 0 && `${Math.round(share * 100)} %`}
+    </span>
   )
 }

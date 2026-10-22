@@ -64,19 +64,35 @@ export function shareLink(driveUrl: string): string | null {
   return id ? `${location.origin}${import.meta.env.BASE_URL}?drive=${id}` : null
 }
 
-/** fetch, with a clear message when the request never reaches Google. */
-async function driveFetch(url: string, waits = [2000, 6000, 15000]): Promise<Response> {
+/** A Drive request the browser could not complete, usually because Google answered without the headers it needs. */
+export class DriveError extends Error {
+  url: string
+  status?: number
+  constructor(url: string, status?: number, what = 'Google Drive') {
+    super(
+      status
+        ? `Google Drive svarade ${status} på ${what}.`
+        : `Kunde inte nå Google Drive. Kolla att du är uppkopplad. Fungerar det ändå inte kan API-nyckeln sakna ${location.origin} bland tillåtna webbplatser.`,
+    )
+    this.url = url
+    this.status = status
+  }
+}
+
+/** fetch, waiting longer each time Google turns the request away. */
+async function driveFetch(url: string, waits = [3000, 10000, 30000]): Promise<Response> {
   try {
-    return await fetch(url)
+    // no-store: never reuse a stored answer, in case one was saved without the CORS headers.
+    const r = await fetch(url, { cache: 'no-store' })
+    // Busy or throttled: worth waiting for. Other answers (404, 403 for a bad key) are returned as they are.
+    if ((r.status === 429 || r.status >= 500) && waits.length) throw new Error(String(r.status))
+    return r
   } catch {
-    // Google sometimes refuses a request for a while (and then without the headers the browser needs), so wait longer each time.
     if (waits.length) {
       await new Promise((r) => setTimeout(r, waits[0]))
       return driveFetch(url, waits.slice(1))
     }
-    throw new Error(
-      `Kunde inte nå Google Drive. Kolla att du är uppkopplad. Fungerar det ändå inte kan API-nyckeln sakna ${location.origin} bland tillåtna webbplatser.`,
-    )
+    throw new DriveError(url)
   }
 }
 
@@ -127,8 +143,9 @@ export async function listDriveFolder(folderUrl: string, key = DRIVE_KEY): Promi
           size: Number(it.size ?? 0),
           modified: it.modifiedTime,
           load: async () => {
-            const r = await driveFetch(`${API}/${it.id}?alt=media&key=${encodeURIComponent(key)}&supportsAllDrives=true`)
-            if (!r.ok) throw new Error(`Kunde inte hämta ${it.name} (${r.status})`)
+            const url = `${API}/${it.id}?alt=media&key=${encodeURIComponent(key)}&supportsAllDrives=true`
+            const r = await driveFetch(url)
+            if (!r.ok) throw new DriveError(url, r.status, it.name)
             return r.blob()
           },
         })

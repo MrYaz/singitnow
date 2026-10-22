@@ -89,4 +89,13 @@ test('import, learn and rehearse', async ({ page }) => {
   await page.screenshot({ path: 'test-results/08b-read-tablet.png' })
   await page.getByRole('button', { name: /This is me ›/ }).click()
   await expect(page.getByRole('heading', { name: 'This is me' })).toBeVisible()
+
+  // The phone's back button steps back in the app, not out of it.
+  await page.goBack()
+  await expect(page.getByText('Dagens pass')).toBeVisible()
+  await page.getByRole('button', { name: 'Textträning' }).first().click()
+  await expect(page.getByRole('radiogroup', { name: 'Inlärningssätt' })).toBeVisible()
+  await page.goBack()
+  await expect(page.getByText('Dagens pass')).toBeVisible()
+  expect(page.url()).toContain('/singitnow/')
 })
