@@ -4,6 +4,7 @@ import { db } from '../lib/db'
 import { pickVoice, sortVoices } from '../lib/names'
 import { useNav } from '../nav'
 import { useSettings } from '../settings'
+import { keepAwake } from '../lib/wakelock'
 import { LineText, OthersText, TopBar, othersVoices } from '../components/ui'
 
 const SIZES = [12, 14, 16, 18, 21, 24, 28, 32, 38, 44]
@@ -30,22 +31,7 @@ export default function ChoirRead({ songId }: { songId: string }) {
   const [size, setSize] = useState(savedSize)
 
   // Keep the screen on while the lyrics are open.
-  useEffect(() => {
-    let lock: WakeLockSentinel | null = null
-    const take = async () => {
-      try {
-        if (document.visibilityState === 'visible') lock = await navigator.wakeLock?.request('screen')
-      } catch {
-        /* not supported or not allowed */
-      }
-    }
-    void take()
-    document.addEventListener('visibilitychange', take)
-    return () => {
-      document.removeEventListener('visibilitychange', take)
-      void lock?.release()
-    }
-  }, [])
+  useEffect(() => keepAwake(), [])
 
   const changeSize = (dir: 1 | -1) => {
     const i = Math.min(SIZES.length - 1, Math.max(0, SIZES.indexOf(size) + dir))
