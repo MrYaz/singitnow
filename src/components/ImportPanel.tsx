@@ -112,17 +112,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
           onChange={(e) => e.target.files?.length && run(async () => fromFileList(e.target.files!))}
         />
       </div>
-      {busy && (
-        // Over the page while importing, so you see it has started without scrolling.
-        <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 px-4" role="dialog" aria-modal="true" aria-label="Hämtar låtarna">
-          <div className="pop card w-full max-w-md space-y-2 shadow-xl" aria-live="polite">
-            <p className="font-bold">{msg}</p>
-            <Bar value={pct} />
-            <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma för att hitta raderna. Det tar en liten stund per låt.</p>
-            <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">💡 Låt skärmen vara på tills allt är hämtat, annars stannar nedladdningen. Appen håller den tänd så länge, och när importen är klar släcks skärmen som vanligt igen.</p>
-          </div>
-        </div>
-      )}
+      {busy && <ImportProgress text={msg} share={pct} />}
       {!busy && msg && (
         <div className="card" aria-live="polite">
           <p className="font-bold">{msg}</p>
@@ -144,6 +134,22 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** Import progress over the page, so you see it has started without scrolling. Used on the start page and in the settings. */
+export function ImportProgress({ text, share }: { text: string; share: number }) {
+  return (
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 px-4" role="dialog" aria-modal="true" aria-label="Hämtar låtarna">
+      <div className="pop card w-full max-w-md space-y-2 shadow-xl" aria-live="polite">
+        <p className="font-bold">{text}</p>
+        <Bar value={share} />
+        <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma för att hitta raderna. Det tar en liten stund per låt.</p>
+        <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">
+          💡 Låt skärmen vara på tills allt är hämtat, annars stannar nedladdningen. Appen håller den tänd så länge, och när importen är klar släcks skärmen som vanligt igen.
+        </p>
+      </div>
     </div>
   )
 }

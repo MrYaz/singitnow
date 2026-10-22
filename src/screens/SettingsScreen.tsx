@@ -7,7 +7,7 @@ import { importSources } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder, shareLink } from '../lib/sources'
 import { useNav } from '../nav'
 import { useSettings } from '../settings'
-import { ImportPanel } from '../components/ImportPanel'
+import { ImportPanel, ImportProgress } from '../components/ImportPanel'
 import { TopBar } from '../components/ui'
 import { VoicePicker } from '../components/VoicePicker'
 
@@ -161,6 +161,7 @@ export default function SettingsScreen() {
           <p className="text-center text-xs text-gray-400">Allt sparas bara i din telefon. Inget laddas upp någonstans.</p>
         </section>
       </main>
+      {working && <ImportProgress text={working.text} share={working.share} />}
     </>
   )
 }
