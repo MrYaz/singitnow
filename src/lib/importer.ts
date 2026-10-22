@@ -6,6 +6,7 @@ import { readLyricsPdf } from './pdf/load'
 import { analyzeInWorker, decodeForAnalysis } from './audio/analyze'
 import { ANALYSIS_RATE } from './audio/activity'
 import { alignLyrics } from './audio/align'
+import { keepAwake } from './wakelock'
 
 export type Progress = (msg: string, done: number, total: number) => void
 
@@ -64,6 +65,16 @@ export async function songsToFetch(sources: SourceFile[]): Promise<{ name: strin
  * Songs whose files did not change are skipped unless `force` is set.
  */
 export async function importSources(sources: SourceFile[], onProgress: Progress, force = false): Promise<Song[]> {
+  // The phone pauses the page if the screen turns off, so keep it on until the import is done.
+  const release = keepAwake()
+  try {
+    return await importAll(sources, onProgress, force)
+  } finally {
+    release()
+  }
+}
+
+async function importAll(sources: SourceFile[], onProgress: Progress, force: boolean): Promise<Song[]> {
   const groups = groupSongs(sources)
   if (!groups.length) throw new Error('Hittade inga låtar. Varje låt behöver minst en Musik-fil och en stämfil.')
   const imported: Song[] = []
