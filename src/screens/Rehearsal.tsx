@@ -5,6 +5,7 @@ import { Mixer, unlockAudio } from '../lib/audio/engine'
 import { shortVoice, sortVoices, pickVoice } from '../lib/names'
 import { useSettings } from '../settings'
 import { refineVoice } from '../lib/refine'
+import { withAllVoices } from '../lib/merge'
 import { LineText, OthersText, TopBar, fmt, othersVoices } from '../components/ui'
 
 interface Track {
@@ -83,7 +84,8 @@ export default function Rehearsal({ songId }: { songId: string }) {
   // Show the lyrics of the loudest voice that has lyrics.
   const textVoice = [...tracks].filter((x) => x.voice).sort((a, b) => (levels[b.id] ?? 0) - (levels[a.id] ?? 0))[0]
   const lyricVoice = (textVoice && (levels[textVoice.id] ?? 0) > 0 ? textVoice.voice : own?.voice) ?? Object.keys(song.voices)[0]
-  const sections = song.voices[lyricVoice]?.sections ?? []
+  // Every voice's PDF together, so the parts where the shown voice rests show what the others sing.
+  const sections = withAllVoices(song, lyricVoice)
 
   const play = async (from: number, l: Loop = loop) => {
     unlockAudio()
@@ -137,7 +139,7 @@ export default function Rehearsal({ songId }: { songId: string }) {
         )}
         <div className="space-y-4">
           {sections.map((s, si) => {
-            if (!s.lines.length && !s.rest && !s.note) return null
+            if (!s.lines.length && !s.rest && !s.note && !s.others.length) return null
             const st = s.start ?? s.pdfStart ?? 0
             const en = s.end ?? st + 10
             const inSec = t >= st - 0.3 && t < en + 0.5
@@ -168,7 +170,9 @@ export default function Rehearsal({ songId }: { songId: string }) {
                       </button>
                     )
                   })}
-                {!hideText && !s.lines.length && s.others.length > 0 && <OthersText others={s.others} />}
+                {!hideText && s.others.length > 0 && (
+                  <OthersText others={s.others} labels={s.lines.length > 0} className={s.lines.length ? 'mt-2 px-1 text-base text-gray-400' : undefined} />
+                )}
                 {hideText && <p className="text-gray-400">{s.lines.length} rader</p>}
               </section>
             )

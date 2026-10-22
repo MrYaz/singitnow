@@ -57,10 +57,11 @@ export function othersVoices(others: string[]): string[] {
   return out
 }
 
-/** What the other voices sing while yours rests: italic and greyed out.
- *  With one voice the name sits in the card heading, so labels are only shown when several voices alternate. */
-export function OthersText({ others, className = 'px-1 text-lg text-gray-400' }: { others: string[]; className?: string }) {
-  const showLabels = othersVoices(others).length > 1
+/** What the other voices sing, italic and greyed out.
+ *  In a rest the name sits in the card heading, so labels are only shown when several voices alternate.
+ *  Next to your own lines (`labels`), they always say who sings. */
+export function OthersText({ others, className = 'px-1 text-lg text-gray-400', labels = false }: { others: string[]; className?: string; labels?: boolean }) {
+  const showLabels = labels || othersVoices(others).length > 1
   return (
     <div className={`space-y-0.5 italic ${className}`}>
       {others.map((o, i) => {
