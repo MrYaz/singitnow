@@ -15,7 +15,7 @@ export default defineConfig({
       manifest: {
         name: 'SingItNow – lär dig texterna',
         short_name: 'SingItNow',
-        description: 'Lär dig körtexterna utantill, en formdel i taget.',
+        description: 'Öva in körens låtar hemma: lyssna och loopa din stämma, lär dig texten utantill steg för steg och läs den stort på körrepet.',
         lang: 'sv',
         theme_color: '#7c3aed',
         background_color: '#faf7ff',
