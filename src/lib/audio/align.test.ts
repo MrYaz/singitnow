@@ -41,4 +41,13 @@ describe.skipIf(!has)('alignment on real material', () => {
     expect(Math.abs(men.start! - 91.2)).toBeLessThan(0.6)
     for (const s of secs) for (const l of s.lines) expect(l.end! >= l.start!).toBe(true)
   }, 120_000)
+
+  it('reads "mellanspel" in "Fix you" as a note, not as a line to sing', async () => {
+    const parsed = await lyrics(`${DIR}/2. Fix you/Text/Alt2- Fix you.pdf`)
+    const all = parsed.sections.flatMap((s) => s.lines.map((l) => l.text))
+    expect(all).not.toContain('mellanspel')
+    const oh = parsed.sections.find((s) => s.lines[0]?.text.startsWith('Oh'))!
+    expect(oh.note).toBe('mellanspel')
+    expect(oh.lines).toHaveLength(7)
+  })
 })

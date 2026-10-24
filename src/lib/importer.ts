@@ -7,7 +7,7 @@ import { analyzeInWorker, decodeForAnalysis } from './audio/analyze'
 import { ANALYSIS_RATE } from './audio/activity'
 import { alignLyrics } from './audio/align'
 import { keepAwake } from './wakelock'
-import { holdRefine, needsRefine, refineVoice } from './refine'
+import { TIMING_VERSION, holdRefine, needsRefine, refineVoice } from './refine'
 import { pickVoice } from './names'
 
 /** One part of fetching a song, shown as its own bar. */
@@ -241,6 +241,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
         const voices: Record<string, VoiceTrack> = {}
         const voiceFiles = stored.filter((s) => s.kind === 'voice' && s.voice)
         let title = prev?.title ?? name
+        let keptOld = false
         for (let i = 0; i < voiceFiles.length; i++) {
           signal?.throwIfAborted()
           const vf = voiceFiles[i]
@@ -251,6 +252,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
           if (same && !force && (prev as Song & { v?: number }).v === ANALYSIS_VERSION) {
             // Unchanged files: keep the analysis, including any timings adjusted by hand.
             voices[vf.voice!] = old
+            keptOld = true
             continue
           }
           onProgress(`Analyserar ${name}: ${vf.voice}`, step + 0.2 + (0.8 * i) / voiceFiles.length, total)
@@ -276,7 +278,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
           step++
           continue
         }
-        const song: Song & { v: number } = {
+        const song: Song & { v: number; tv: number } = {
           id: g.id,
           title,
           folder: g.folder,
@@ -287,6 +289,8 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
           voices,
           addedAt: prev?.addedAt ?? Date.now(),
           v: ANALYSIS_VERSION,
+          // Voices kept from before still need upgradeTiming if they are from an older version.
+          tv: keptOld ? ((prev as Song & { tv?: number }).tv ?? 1) : TIMING_VERSION,
         }
         await db.songs.put(song)
         imported.push(song)
