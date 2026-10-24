@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
-import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../lib/learn'
+import { doneFor, dueLines, getStreak, heardFor, isDone, saveSettings, todayXP } from '../lib/learn'
 import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
 import { pickVoice, shortVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
@@ -45,6 +45,14 @@ export default function Home() {
     for (const s of songs ?? []) {
       const v = pickVoice(s.voices, mine)
       out[s.id] = v ? await doneFor(s.id, v) : {}
+    }
+    return out
+  }, [songs, mineKey])
+  const heard = useLiveQuery(async () => {
+    const out: Record<string, number[]> = {}
+    for (const s of songs ?? []) {
+      const v = pickVoice(s.voices, mine)
+      out[s.id] = v ? await heardFor(s.id, v) : []
     }
     return out
   }, [songs, mineKey])
@@ -135,7 +143,7 @@ export default function Home() {
     void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
   }, [songs, mineKey])
 
-  if (!songs || !levels || !pending) return null
+  if (!songs || !levels || !heard || !pending) return null
   const allVoices = sortVoices([...new Set([...songs.flatMap((s) => Object.keys(s.voices)), ...pending.flatMap((p) => p.voices)])])
   // Downloaded songs and songs only noted from Drive, in the folder's order.
   const list: { id: string; order: number; song?: Song; wait?: PendingSong }[] = [
@@ -172,6 +180,27 @@ export default function Home() {
     }
     return null
   })()
+
+  // Parts of your voice not yet played through in Stämrep (parts without timing cannot be).
+  const unheard = (s: Song) => {
+    const vn = voiceOf(s)
+    if (!vn) return []
+    return learnable(s.voices[vn].sections).filter((x) => x.s.start != null && x.s.end != null && !heard[s.id]?.includes(x.i))
+  }
+
+  /** Where a tap on a song card goes: the next step not done, Stämrep first and then Textträning. */
+  const resume = (s: Song): Screen => {
+    const vn = voiceOf(s)
+    if (!vn) return { name: 'rehearsal', songId: s.id }
+    const left = unheard(s)
+    if (left.length) return { name: 'rehearsal', songId: s.id, part: left[0].i }
+    const secs = learnable(s.voices[vn].sections)
+    for (let m = 0; m < LEVELS.length; m++) {
+      const part = secs.find((x) => !isDone(levels[s.id]?.[x.i], m))
+      if (part) return lessonFor(s, vn, part.i, m)
+    }
+    return { name: 'song', songId: s.id }
+  }
 
   const startDaily = () => {
     const items: LessonItem[] = []
@@ -258,7 +287,7 @@ export default function Home() {
             const open = (then: Screen) => void fetchNow(id, then)
             return (
               <li key={id} className="card">
-                <button className="w-full text-left" onClick={() => open({ name: 'song', songId: id })}>
+                <button className="w-full text-left" onClick={() => open({ name: 'rehearsal', songId: id })}>
                   <p className="text-lg font-extrabold">{wait!.title}</p>
                   <p className="mt-1 text-xs font-bold text-gray-500">Hämtas när du öppnar den · {mb(wait!.size)}</p>
                 </button>
@@ -279,7 +308,7 @@ export default function Home() {
           const p = progressOf(s)
           return (
             <li key={s.id} className="card">
-              <button className="w-full text-left" onClick={() => nav.go({ name: 'song', songId: s.id })}>
+              <button className="w-full text-left" onClick={() => nav.go(resume(s))}>
                 <div className="flex items-center gap-2">
                   <p className="flex-1 text-lg font-extrabold">{s.title}</p>
                   {p && p.done === p.total && <span className="text-xl">👑</span>}
@@ -302,7 +331,7 @@ export default function Home() {
               )}
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <button className={songBtn} onClick={() => nav.go({ name: 'rehearsal', songId: s.id })}>
-                  Stämrep
+                  Stämrep{p && !unheard(s).length && ' ✓'}
                 </button>
                 <button className={songBtn} disabled={!p} onClick={() => nav.go({ name: 'song', songId: s.id })}>
                   Textträning

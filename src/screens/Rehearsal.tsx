@@ -5,6 +5,7 @@ import { Mixer, unlockAudio } from '../lib/audio/engine'
 import { shortVoice, sortVoices, pickVoice } from '../lib/names'
 import { useSettings } from '../settings'
 import { refineVoice } from '../lib/refine'
+import { markHeard, playedThrough } from '../lib/learn'
 import { withAllVoices } from '../lib/merge'
 import { LineText, OthersText, TopBar, fmt, othersVoices } from '../components/ui'
 import type { Line } from '../lib/types'
@@ -80,6 +81,24 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
     mixer.seek(pl.from)
     requestAnimationFrame(() => document.getElementById(`del-${mi}`)?.scrollIntoView({ block: 'center' }))
   }, [ready, song, part, own?.voice, mixer])
+
+  // A part of your voice counts as rehearsed once it has been played through without a jump:
+  // from before it starts to its end, as a looped part or as the song plays on.
+  const run = useRef<{ from: number; last: number } | null>(null)
+  useEffect(() => {
+    const secs = own?.voice ? song?.voices[own.voice]?.sections : undefined
+    if (!playing || !secs || !own?.voice) {
+      run.current = null
+      return
+    }
+    const r = run.current
+    if (!r || t < r.last - 0.05 || t > r.last + 1) {
+      run.current = { from: t, last: t }
+      return
+    }
+    for (const i of playedThrough(secs, r.from, r.last, t)) void markHeard(songId, own.voice, i)
+    r.last = t
+  }, [t, playing, song, own?.voice, songId])
 
   useEffect(() => {
     let raf = 0

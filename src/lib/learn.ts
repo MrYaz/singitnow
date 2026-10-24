@@ -41,6 +41,30 @@ export async function completeMethod(songId: string, voice: string, s: number, m
   await db.progress.put({ key, songId, voice, level: Math.max(cur?.level ?? 0, method + 1), done })
 }
 
+// ---- Parts heard in Stämrep ------------------------------------------------
+
+const heardKey = (songId: string, voice: string) => `heard:${songId}|${voice}`
+
+/** The parts (section indices) of a voice that have been played through in Stämrep. */
+export const heardFor = (songId: string, voice: string) => getKV<number[]>(heardKey(songId, voice), [])
+
+/**
+ * The parts that unbroken playback has just played through: it began before the part started
+ * (`from`), was last seen before the part ended (`last`), and is now past its end (`t`).
+ */
+export function playedThrough(sections: { lines: unknown[]; start?: number; end?: number }[], from: number, last: number, t: number): number[] {
+  const out: number[] = []
+  sections.forEach((x, i) => {
+    if (x.lines.length && x.start != null && x.end != null && from <= x.start + 0.5 && last < x.end && t >= x.end) out.push(i)
+  })
+  return out
+}
+
+export async function markHeard(songId: string, voice: string, s: number) {
+  const cur = await heardFor(songId, voice)
+  if (!cur.includes(s)) await setKV(heardKey(songId, voice), [...cur, s].sort((x, y) => x - y))
+}
+
 // ---- Daily goal and streak -------------------------------------------------
 
 export const today = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

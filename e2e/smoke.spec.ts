@@ -29,6 +29,35 @@ test('import, learn and rehearse', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Avsluta' })).toBeVisible()
   await page.getByRole('button', { name: 'Avsluta' }).click()
   await expect(page.getByText('Dagens pass')).toBeVisible()
+
+  // Tapping a song card picks up where you are: Stämrep with the next part looped first...
+  await page.getByRole('button', { name: /^Why did it have to be me/ }).click()
+  await expect(page.getByRole('button', { name: /Loopar del \d+/ })).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: 'Tillbaka' }).click()
+  // ...and once every part has been played through there, the words.
+  await page.evaluate(
+    () =>
+      new Promise<void>((done, fail) => {
+        const req = indexedDB.open('singitnow')
+        req.onerror = () => fail(req.error)
+        req.onsuccess = () => {
+          const idb = req.result
+          const get = idb.transaction('songs').objectStore('songs').getAll()
+          get.onsuccess = () => {
+            const tx = idb.transaction('kv', 'readwrite')
+            for (const song of get.result as { id: string; voices: Record<string, { sections: unknown[] }> }[])
+              for (const [v, t] of Object.entries(song.voices)) tx.objectStore('kv').put({ key: `heard:${song.id}|${v}`, value: t.sections.map((_, i) => i) })
+            tx.oncomplete = () => done()
+          }
+        }
+      }),
+  )
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Stämrep ✓' }).first()).toBeVisible()
+  await page.getByRole('button', { name: /^Why did it have to be me/ }).click()
+  await expect(page.getByRole('button', { name: 'Avsluta' })).toBeVisible()
+  await page.getByRole('button', { name: 'Avsluta' }).click()
+  await expect(page.getByText('Dagens pass')).toBeVisible()
   // The three song buttons fit on a narrow phone.
   await page.setViewportSize({ width: 340, height: 740 })
   const box = await page.getByRole('button', { name: 'Körrep' }).first().boundingBox()
