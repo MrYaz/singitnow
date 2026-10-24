@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from './lib/db'
+import { db, dbBlocked } from './lib/db'
 import { getSettings, saveSettings, type Settings } from './lib/learn'
 import { readDriveParam } from './lib/sources'
 import { NavContext, type Screen } from './nav'
@@ -18,16 +18,25 @@ import ChoirRead from './screens/ChoirRead'
 export default function App() {
   const [stack, setStack] = useState<Screen[]>([{ name: 'home' }])
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [loadErr, setLoadErr] = useState('')
+  const [slow, setSlow] = useState(false)
   // Songs only noted from Drive count too: they are downloaded when first opened.
   const songCount = useLiveQuery(async () => (await db.songs.count()) + (await db.pending.count()), [])
 
   useEffect(() => {
     void (async () => {
-      // Opened from a shared link with the choir's Drive folder: remember the folder.
-      const drive = readDriveParam()
-      if (drive && drive !== (await getSettings()).driveUrl) await saveSettings({ driveUrl: drive })
-      setSettings(await getSettings())
+      try {
+        // Opened from a shared link with the choir's Drive folder: remember the folder.
+        const drive = readDriveParam()
+        if (drive && drive !== (await getSettings()).driveUrl) await saveSettings({ driveUrl: drive })
+        setSettings(await getSettings())
+      } catch (e) {
+        setLoadErr(e instanceof Error ? `${e.name}: ${e.message}` : String(e))
+      }
     })()
+    // The phone's storage can be held by the app in another tab. Say so instead of loading forever.
+    const t = setTimeout(() => setSlow(true), 8000)
+    return () => clearTimeout(t)
   }, [])
 
   // Each screen gets a browser history entry, so the phone's back button steps back in the app.
@@ -65,7 +74,22 @@ export default function App() {
     [settings],
   )
 
-  if (!settings || songCount === undefined) return <div className="grid h-full place-items-center text-brand-600">Laddar…</div>
+  if (!settings || songCount === undefined) {
+    if (!loadErr && !slow) return <div className="grid h-full place-items-center text-brand-600">Laddar…</div>
+    return (
+      <main className="mx-auto max-w-md space-y-4 px-4 pt-16 text-center">
+        <p className="text-5xl">🎶</p>
+        <p className="text-xl font-black">Appen kommer inte åt sitt minne just nu</p>
+        <p className="text-gray-600">
+          Oftast beror det på att appen är öppen i en annan flik eller ett annat fönster. Stäng alla flikar med SingItNow, och öppna sedan appen igen.
+        </p>
+        <button className="btn-primary w-full" onClick={() => location.reload()}>
+          Försök igen
+        </button>
+        {(loadErr || dbBlocked()) && <p className="text-xs text-gray-400">{loadErr || 'Databasen väntar på en annan flik.'}</p>}
+      </main>
+    )
+  }
 
   const screen = stack.at(-1)!
   const needsSetup = songCount === 0 || !settings.voices.length

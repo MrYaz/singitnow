@@ -153,8 +153,10 @@ export default function SettingsScreen() {
             className="w-full rounded-2xl border-2 border-red-100 py-3 font-bold text-red-600"
             onClick={async () => {
               if (!confirm('Radera alla låtar och all statistik på den här enheten?')) return
-              await db.delete()
-              location.reload()
+              // Deleting waits for every tab with the app to let go of it. Do not wait for ever:
+              // the deletion finishes when the other tabs close, and the start page says so meanwhile.
+              await Promise.race([db.delete(), new Promise((r) => setTimeout(r, 3000))])
+              location.replace(import.meta.env.BASE_URL)
             }}
           >
             Radera allt på den här enheten
