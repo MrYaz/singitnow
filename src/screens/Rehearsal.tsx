@@ -7,6 +7,7 @@ import { useSettings } from '../settings'
 import { refineVoice } from '../lib/refine'
 import { withAllVoices } from '../lib/merge'
 import { LineText, OthersText, TopBar, fmt, othersVoices } from '../components/ui'
+import type { Line } from '../lib/types'
 
 interface Track {
   id: string
@@ -30,6 +31,7 @@ export default function Rehearsal({ songId }: { songId: string }) {
   const [showMixer, setShowMixer] = useState(false)
   const [hideText, setHideText] = useState(false)
   const [refining, setRefining] = useState<number | null>(null)
+  const [trimming, setTrimming] = useState(false)
 
   const tracks: Track[] = useMemo(() => {
     if (!song) return []
@@ -96,13 +98,43 @@ export default function Rehearsal({ songId }: { songId: string }) {
   const loopIt = (from: number, to: number, label: string) => {
     // A second tap on what is already looping turns the loop off and lets the song play on.
     if (loop?.label === label) return clearLoop()
+    if (loop?.label !== label) setTrimming(false)
     const l = { from: Math.max(0, from), to, label }
     setLoop(l)
     void play(l.from, l)
   }
   const clearLoop = () => {
     setLoop(null)
+    setTrimming(false)
     if (playing) void mixer.play({ from: mixer.time })
+  }
+
+  // The looped line's own section in the shown voice (the merged list also holds the others' rests).
+  const ownTrack = song.voices[lyricVoice]
+  const ownIndex = (si: number) => (ownTrack ? ownTrack.sections.findIndex((x) => x.lines === sections[si].lines) : -1)
+
+  /** Moves the start or end of a line by `d` seconds, saves it, and loops the line again with the new times. */
+  const trim = async (si: number, li: number, field: 'start' | 'end', d: number) => {
+    const k = ownIndex(si)
+    if (k < 0 || !ownTrack) return
+    const secs = structuredClone(ownTrack.sections)
+    const line = secs[k].lines[li]
+    const st = secs[k].start ?? secs[k].pdfStart ?? 0
+    const before = { start: line.start ?? st, end: line.end ?? st + 4 }
+    const v = Math.round((before[field] + d) * 100) / 100
+    if (field === 'start' ? v >= before.end - 0.2 || v < 0 : v <= before.start + 0.2) return
+    line.start = before.start
+    line.end = before.end
+    line[field] = v
+    if (li === 0) secs[k].start = line.start
+    if (li === secs[k].lines.length - 1) secs[k].end = line.end
+    await db.songs.update(songId, (x) => {
+      if (x.voices[lyricVoice]) x.voices[lyricVoice].sections = secs
+    })
+    const l = { from: Math.max(0, line.start! - 0.3), to: line.end! + 0.4, label: `${si}:${li}` }
+    setLoop(l)
+    // A new start is heard at once; a new end is heard just before it.
+    void play(field === 'start' ? l.from : Math.max(l.from, l.to - 2.5), l)
   }
 
   return (
@@ -143,6 +175,8 @@ export default function Rehearsal({ songId }: { songId: string }) {
             const st = s.start ?? s.pdfStart ?? 0
             const en = s.end ?? st + 10
             const inSec = t >= st - 0.3 && t < en + 0.5
+            const lp = loop?.label.match(/^(\d+):(\d+)$/)
+            const loopedLine = lp && Number(lp[1]) === si && s.lines[Number(lp[2])] ? Number(lp[2]) : null
             return (
               <section key={si} className={`card transition ${inSec && playing ? 'border-brand-400' : ''}`}>
                 <div className="mb-2 flex items-center gap-2">
@@ -155,7 +189,20 @@ export default function Rehearsal({ songId }: { songId: string }) {
                     </span>
                   )}
                   {s.note && <span className="text-xs text-gray-400 italic">{s.note}</span>}
+                  {loopedLine != null && ownIndex(si) >= 0 && (
+                    <button
+                      className={`ml-auto grid h-8 w-8 place-items-center rounded-full ${trimming ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-700'}`}
+                      aria-label="Justera radens tider"
+                      aria-pressed={trimming}
+                      onClick={() => setTrimming((x) => !x)}
+                    >
+                      <TrimIcon />
+                    </button>
+                  )}
                 </div>
+                {trimming && loopedLine != null && ownIndex(si) >= 0 && (
+                  <TrimPanel line={s.lines[loopedLine]} onTrim={(field, d) => void trim(si, loopedLine, field, d)} />
+                )}
                 {!hideText &&
                   s.lines.map((l, li) => {
                     const on = playing && t >= (l.start ?? 0) - 0.1 && t < (l.end ?? 0) + 0.2
@@ -241,5 +288,39 @@ export default function Rehearsal({ songId }: { songId: string }) {
         </div>
       </div>
     </>
+  )
+}
+
+/** A dashed line with arrows either way: move where a line starts or ends. */
+function TrimIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor">
+      <rect x="11" y="1" width="2" height="4" rx="1" />
+      <rect x="11" y="7" width="2" height="4" rx="1" />
+      <rect x="11" y="13" width="2" height="4" rx="1" />
+      <rect x="11" y="19" width="2" height="4" rx="1" />
+      <path d="M9 7.5v9L3.5 12zM15 7.5v9l5.5-4.5z" />
+    </svg>
+  )
+}
+
+function TrimPanel({ line, onTrim }: { line: Line; onTrim: (field: 'start' | 'end', d: number) => void }) {
+  const step = (field: 'start' | 'end', d: number, label: string) => (
+    <button className="rounded-lg bg-white px-3 py-1.5 font-black text-brand-700 shadow-[0_2px_0_#d6c4ff]" aria-label={label} onClick={() => onTrim(field, d)}>
+      {d < 0 ? '−' : '+'}
+    </button>
+  )
+  return (
+    <div className="mb-2 space-y-2 rounded-2xl bg-brand-50 p-3 text-sm">
+      {(['start', 'end'] as const).map((f) => (
+        <div key={f} className="flex items-center gap-2">
+          <span className="w-10 text-xs font-bold text-gray-500">{f === 'start' ? 'Start' : 'Slut'}</span>
+          {step(f, -0.25, f === 'start' ? 'Börja tidigare' : 'Sluta tidigare')}
+          <span className="w-16 text-center font-bold tabular-nums">{fmt(line[f])}</span>
+          {step(f, 0.25, f === 'start' ? 'Börja senare' : 'Sluta senare')}
+        </div>
+      ))}
+      <p className="text-xs text-gray-500">Flytta raden en kvarts sekund i taget. Ändringen sparas direkt och loopen spelar om.</p>
+    </div>
   )
 }
