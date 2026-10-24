@@ -6,7 +6,7 @@ import { sortVoices } from '../lib/names'
 import { useSettings } from '../settings'
 import { ImportPanel } from '../components/ImportPanel'
 import { VoicePicker } from '../components/VoicePicker'
-import headphones from '../assets/emoji/headphones.svg'
+import book from '../assets/emoji/book.svg'
 import memo from '../assets/emoji/memo.svg'
 import notes from '../assets/emoji/notes.svg'
 import score from '../assets/emoji/score.svg'
@@ -39,7 +39,7 @@ export default function Setup() {
 
       <div className="grid grid-cols-2 gap-3 text-center">
         <div className="card">
-          <img src={headphones} alt="" className="mx-auto h-10 w-10" />
+          <img src={score} alt="" className="mx-auto h-10 w-10" />
           <p className="mt-2 font-black">Stämrep</p>
           <p className="text-sm text-gray-600">Lyssna på din stämma eller ALLA, loopa en fras om och om igen och mixa stämmorna.</p>
         </div>
@@ -49,7 +49,7 @@ export default function Setup() {
           <p className="text-sm text-gray-600">Lär dig texten utantill del för del, med sex olika inlärningssätt.</p>
         </div>
         <div className="card col-span-2">
-          <img src={score} alt="" className="mx-auto h-10 w-10" />
+          <img src={book} alt="" className="mx-auto h-10 w-10" />
           <p className="mt-2 font-black">Körrep</p>
           <p className="text-sm text-gray-600">Bara texten, stor och lättläst på mobilen eller läsplattan, med allt från körens PDF:er.</p>
         </div>
