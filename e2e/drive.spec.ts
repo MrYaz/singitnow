@@ -75,6 +75,8 @@ test('lists the songs first and fetches each one when it is opened', async ({ pa
   // Opening it downloads and analyses it, then shows what you chose.
   await page.getByRole('button', { name: 'Körrep' }).first().click()
   await expect(page.getByText('Ha webbläsaren framme')).toBeVisible()
+  // The speech model times the lines as part of fetching.
+  await expect(page.getByText(/Finsynkar texten för Alt 2 \(1\//)).toBeVisible({ timeout: 300_000 })
   await expect(page.getByRole('heading', { name: 'Körrep' })).toBeVisible({ timeout: 600_000 })
   await page.goBack()
   await expect(page.getByText(/Hämtas när du öppnar den/)).toHaveCount(0)
@@ -97,7 +99,7 @@ test('lists the songs first and fetches each one when it is opened', async ({ pa
 })
 
 test('a song Google turns away is tried again', async ({ page }) => {
-  test.setTimeout(300_000)
+  test.setTimeout(900_000)
   const songs = readdirSync(DIR!).sort()
   // Four refusals: the first file fails all its retries, so the song waits and is tried again.
   await serve(page, songs.slice(0, 1), 4)
@@ -106,7 +108,7 @@ test('a song Google turns away is tried again', async ({ page }) => {
   await setUp(page)
   await page.getByRole('button', { name: 'Körrep' }).first().click()
   await expect(page.getByText(/svarar inte just nu för .*Försöker igen om/)).toBeVisible({ timeout: 120_000 })
-  await expect(page.getByRole('heading', { name: 'Körrep' })).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByRole('heading', { name: 'Körrep' })).toBeVisible({ timeout: 600_000 })
 })
 
 test('fetching all songs can be stopped and continued later', async ({ page }) => {

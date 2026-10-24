@@ -92,13 +92,13 @@ export default function Home() {
     const tally = { got: 0, total: 0 }
     stopTally.current = tally
     try {
-      if (id) await fetchSong(id, (msg, done, n) => !stop.signal.aborted && setFetching({ msg, share: n ? done / n : 0 }), stop.signal)
+      if (id) await fetchSong(id, (msg, done, n) => !stop.signal.aborted && setFetching({ msg, share: n ? done / n : 0 }), stop.signal, mineRef.current)
       else
         await fetchAllSongs((msg, done, n) => {
           tally.got = Math.floor(done)
           tally.total = n
           if (!stop.signal.aborted) setFetching({ msg, share: n ? done / n : 0, summary: `Hämtat ${tally.got} av ${n} låtar` })
-        }, stop.signal)
+        }, stop.signal, mineRef.current)
       if (stop.signal.aborted) return
       setFetching(null)
       if (then) nav.go(then)
