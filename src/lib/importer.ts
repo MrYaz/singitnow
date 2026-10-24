@@ -21,14 +21,16 @@ export interface Step {
 
 export type Progress = (msg: string, done: number, total: number, steps?: Step[]) => void
 
+/** How much of one song's progress is downloading its files; the rest is listening through them. */
+export const FETCH_SHARE = 0.4
+
 /** Bump when the analysis changes so stored songs get re-analysed. */
 export const ANALYSIS_VERSION = 1
 
-async function storeFile(g: SongGroup, gf: SongGroup['files'][number], report: () => void): Promise<StoredFile> {
+async function storeFile(g: SongGroup, gf: SongGroup['files'][number]): Promise<StoredFile> {
   const existing = await db.files.get(gf.file.id)
   if (existing && existing.modified === gf.file.modified && existing.size === gf.file.size) return existing
   const blob = await gf.file.load()
-  report()
   const row: StoredFile = {
     id: gf.file.id,
     songId: g.id,
@@ -107,7 +109,7 @@ export async function fetchSong(id: string, onProgress: Progress, signal?: Abort
   // Your voices first, then the others, as the timing below goes.
   const own = pickVoice(Object.fromEntries(row.voices.map((v) => [v, true])), mine)
   const order = own ? [own, ...row.voices.filter((v) => v !== own)] : row.voices
-  const steps: Step[] = [{ label: 'Hämtar och lyssnar igenom låten', share: 0 }, ...order.map((v) => ({ label: `Finsynkar ${v}`, share: 0 }))]
+  const steps: Step[] = [{ label: 'Hämtar låtfilerna', share: 0 }, { label: 'Lyssnar igenom låten', share: 0 }, ...order.map((v) => ({ label: `Finsynkar ${v}`, share: 0 }))]
   const emit = (msg: string) => {
     const done = steps.reduce((a, x) => a + (x.failed ? 1 : x.share), 0) / steps.length
     onProgress(msg, done, 1, steps.map((x) => ({ ...x })))
@@ -119,16 +121,23 @@ export async function fetchSong(id: string, onProgress: Progress, signal?: Abort
     await importSources(
       row.files.map((f) => driveFile(f)),
       (msg, done, total) => {
-        // Not full until the import is over: a song Google turned away waits here for its second try.
-        steps[0].share = Math.min(0.99, total ? done / total : 0)
-        steps[0].note = msg
+        // Downloading fills the first segment, listening the second. Not full until the import is
+        // over: a song Google turned away waits here for its second try.
+        const u = total ? done / total : 0
+        steps[0].share = Math.min(u < 1 ? 1 : 0.99, u / FETCH_SHARE)
+        steps[1].share = Math.min(0.99, Math.max(0, (u - FETCH_SHARE) / (1 - FETCH_SHARE)))
+        const cur = steps[0].share < 1 ? steps[0] : steps[1]
+        steps[0].note = steps[1].note = undefined
+        cur.note = msg
         emit(msg)
       },
       false,
       signal,
     )
-    steps[0].share = 1
-    steps[0].note = undefined
+    for (const x of steps.slice(0, 2)) {
+      x.share = 1
+      x.note = undefined
+    }
     await db.pending.delete(id)
     const first = await db.songs.get(id)
     if (!first) return undefined
@@ -225,17 +234,17 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
       }
       const name = folderTitle(g.folder)
       try {
-        onProgress(`Hämtar ${name}`, step, total)
         const stored: StoredFile[] = []
-        let n = 0
-        for (const f of g.files) {
+        const n = g.files.length
+        for (let k = 0; k < n; k++) {
           // Stopping keeps the files already downloaded, so going on later starts where it stopped.
           signal?.throwIfAborted()
-          stored.push(await storeFile(g, f, () => onProgress(`Hämtar ${name} (${++n}/${g.files.length})`, step, total)))
+          onProgress(`Hämtar ${name} (${k + 1}/${n})`, step + (FETCH_SHARE * k) / n, total)
+          stored.push(await storeFile(g, g.files[k]))
         }
         const musik = stored.find((s) => s.kind === 'musik')!
         const alla = stored.find((s) => s.kind === 'alla')
-        onProgress(`Lyssnar på ${name}`, step + 0.1, total)
+        onProgress(`Lyssnar på ${name}`, step + FETCH_SHARE, total)
         const music = await decodeForAnalysis(musik.blob)
         const beats = prev?.musikFileId === musik.id && prev.beats !== undefined && !changedIds.has(musik.id) ? prev.beats : await beatsInWorker(music.pcm).catch(() => null)
         // Rebuilt from the current files only, so voices removed from the folder disappear.
@@ -256,7 +265,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
             keptOld = true
             continue
           }
-          onProgress(`Analyserar ${name}: ${vf.voice}`, step + 0.2 + (0.8 * i) / voiceFiles.length, total)
+          onProgress(`Analyserar ${name}: ${vf.voice}`, step + FETCH_SHARE + 0.1 + ((0.9 - FETCH_SHARE) * i) / voiceFiles.length, total)
           const lyrics = await readLyricsPdf(pdf.blob)
           if (lyrics.title.includes(' - ')) title = lyrics.title.split(' - ')[0].trim()
           const voice = await decodeForAnalysis(vf.blob)
