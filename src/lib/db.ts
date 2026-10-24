@@ -51,6 +51,13 @@ class SingItDB extends Dexie {
 
 export const db = new SingItDB()
 
+// An older copy of the app in another tab can hold the database while it is upgraded or deleted.
+let blocked = false
+db.on('blocked', () => {
+  blocked = true
+})
+export const dbBlocked = () => blocked
+
 export async function getKV<T>(key: string, fallback: T): Promise<T> {
   const row = await db.kv.get(key)
   return row ? (row.value as T) : fallback
