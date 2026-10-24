@@ -64,6 +64,23 @@ test('import, learn and rehearse', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'ALLA', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Mixer' }).click()
   await page.screenshot({ path: 'test-results/06-rehearsal.png' })
+  await page.getByRole('button', { name: 'Mixer' }).click()
+
+  // A looped line can be trimmed right there; the change is saved.
+  await expect(page.getByRole('button', { name: 'Justera radens tider' })).toHaveCount(0)
+  await page.locator('main section button.block').first().click()
+  await page.getByRole('button', { name: 'Justera radens tider' }).click()
+  const startText = page.getByRole('button', { name: 'Börja senare' }).locator('xpath=preceding-sibling::span[1]')
+  const before = await startText.innerText()
+  await page.getByRole('button', { name: 'Börja senare' }).click()
+  await expect(startText).not.toHaveText(before)
+  const after = await startText.innerText()
+  await page.screenshot({ path: 'test-results/06b-trim.png' })
+  await page.reload()
+  await page.getByRole('button', { name: 'Stämrep' }).nth(1).click()
+  await page.locator('main section button.block').first().click()
+  await page.getByRole('button', { name: 'Justera radens tider' }).click()
+  await expect(page.getByRole('button', { name: 'Börja senare' }).locator('xpath=preceding-sibling::span[1]')).toHaveText(after)
 
   // Where a voice rests, the other voices' words show in grey italics.
   await page.getByRole('button', { name: 'Tillbaka' }).click()
