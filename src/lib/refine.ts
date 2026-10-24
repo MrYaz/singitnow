@@ -1,7 +1,7 @@
 import { db } from './db'
 import type { Song } from './types'
 import { decodeForAnalysis, loadTokens, runSpeechModel } from './audio/analyze'
-import { applyCtc, isVocalise, makeVocab } from './audio/ctc'
+import { applyCtc, drifted, isVocalise, makeVocab } from './audio/ctc'
 import { alignLyrics } from './audio/align'
 import { readLyricsPdf } from './pdf/load'
 
@@ -40,12 +40,12 @@ export async function refineVoice(song: Song, voice: string, onProgress?: (share
 }
 
 /** Bump when lyrics reading or fine-sync changes in a way that needs songs already fetched to be redone. */
-export const TIMING_VERSION = 2
+export const TIMING_VERSION = 3
 
 /**
  * Brings songs fetched with an older version up to date without downloading anything: reads the
  * stored PDF again and redoes the timing of the voices it changes, or that have parts with only
- * sounds ("Oh…"), which the fine-sync now times differently. The background queue then fine-syncs them again.
+ * sounds ("Oh…") (version 2), or parts the fine-sync put far from their PDF time (version 3). The background queue then fine-syncs them again.
  */
 export async function upgradeTiming(): Promise<void> {
   const songs = (await db.songs.toArray()) as (Song & { tv?: number })[]
@@ -58,8 +58,11 @@ export async function upgradeTiming(): Promise<void> {
         if (!pdf) continue
         const lyrics = await readLyricsPdf(pdf.blob)
         const text = (secs: { note: string | null; lines: { text: string }[] }[]) => JSON.stringify(secs.map((x) => [x.note, x.lines.map((l) => l.text)]))
-        const vocal = track.sections.some((x) => x.lines.length > 0 && x.lines.every((l) => isVocalise(l.text)))
-        if (!vocal && text(lyrics.sections) === text(track.sections)) continue
+        const old = song.tv ?? 1
+        const vocal = old < 2 && track.sections.some((x) => x.lines.length > 0 && x.lines.every((l) => isVocalise(l.text)))
+        const parsed = old < 2 && text(lyrics.sections) !== text(track.sections)
+        const far = track.timing === 'speech' && drifted(track.sections)
+        if (!vocal && !parsed && !far) continue
         redo[v] = alignLyrics(lyrics, track.spans ?? spansFromActivity(track.activity), song.duration)
       } catch (e) {
         console.warn('Could not upgrade', song.title, v, e)
