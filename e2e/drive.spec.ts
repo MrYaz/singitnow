@@ -68,6 +68,8 @@ test('lists the songs first and fetches each one when it is opened', async ({ pa
   // A shared link reads the folder by itself. Only the list is fetched, so this is quick.
   await page.goto('./?drive=ROOTFOLDER12345678901')
   await expect(page.getByText('✓ 1 låt hittade')).toBeVisible({ timeout: 30_000 })
+  // Reading the list is quick, so its box has no tips about long downloads.
+  await expect(page.getByText('Ha webbläsaren framme')).toHaveCount(0)
   await setUp(page)
   await expect(page.getByText(/Hämtas när du öppnar den · \d+ MB/)).toBeVisible()
   await page.screenshot({ path: 'test-results/drive-waiting.png' })
@@ -124,4 +126,9 @@ test('fetching all songs can be stopped and continued later', async ({ page }) =
   await page.getByRole('button', { name: 'Avbryt och fortsätt senare' }).click()
   await expect(page.getByText(`Hämtat 1 av ${songs.length} låtar. Tryck på Hämta alla`)).toBeVisible()
   await expect(page.getByText(/Hämtas när du öppnar den/)).toHaveCount(songs.length - 1)
+
+  // Going on counts over the whole list.
+  await page.getByRole('button', { name: /Hämta alla/ }).click()
+  await expect(page.getByText(`Hämtat 1 av ${songs.length} låtar`)).toBeVisible()
+  await page.getByRole('button', { name: 'Avbryt och fortsätt senare' }).click()
 })

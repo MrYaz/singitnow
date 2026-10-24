@@ -24,7 +24,18 @@ export default function Home() {
   const { settings, reload } = useSettings()
   const mine = settings.voices
   const songs = useLiveQuery(() => db.songs.orderBy('order').toArray(), [])
-  const pending = useLiveQuery(() => db.pending.orderBy('order').toArray(), [])
+  // Noted songs, with what is left to download: a stopped download keeps the files it got.
+  const pending = useLiveQuery(async () => {
+    const rows = await db.pending.orderBy('order').toArray()
+    const stored = new Map((await db.files.bulkGet(rows.flatMap((r) => r.files.map((f) => `drive:${f.driveId}`)))).filter((f) => !!f).map((f) => [f.id, f]))
+    return rows.map((r) => ({
+      ...r,
+      size: r.files.reduce((a, f) => {
+        const got = stored.get(`drive:${f.driveId}`)
+        return got && got.modified === f.modified && got.size === f.size ? a : a + f.size
+      }, 0),
+    }))
+  }, [])
   const xp = useLiveQuery(() => todayXP(), [])
   const streak = useLiveQuery(() => getStreak(), [])
   const mineKey = mine.join('|')
@@ -89,15 +100,17 @@ export default function Home() {
     syncing.current = true
     const stop = new AbortController()
     stopFetch.current = stop
-    const tally = { got: 0, total: 0 }
+    // Counted over the whole song list, so going on after a stop still reads "3 av 7".
+    const before = (songs ?? []).filter((x) => !(pending ?? []).some((p) => p.id === x.id)).length
+    const tally = { got: before, total: 0 }
     stopTally.current = tally
     try {
       if (id) await fetchSong(id, (msg, done, n) => !stop.signal.aborted && setFetching({ msg, share: n ? done / n : 0 }), stop.signal, mineRef.current)
       else
         await fetchAllSongs((msg, done, n) => {
-          tally.got = Math.floor(done)
-          tally.total = n
-          if (!stop.signal.aborted) setFetching({ msg, share: n ? done / n : 0, summary: `Hämtat ${tally.got} av ${n} låtar` })
+          tally.got = before + Math.floor(done)
+          tally.total = before + n
+          if (!stop.signal.aborted) setFetching({ msg, share: n ? done / n : 0, summary: `Hämtat ${tally.got} av ${tally.total} låtar` })
         }, stop.signal, mineRef.current)
       if (stop.signal.aborted) return
       setFetching(null)
@@ -225,7 +238,7 @@ export default function Home() {
 
       {syncMsg && <p className="mt-3 rounded-2xl bg-good-100 p-3 text-sm font-bold text-good-600">{syncMsg}</p>}
       <h2 className="mt-7 mb-3 text-lg font-black">Låtar</h2>
-      {waiting.length > 1 && (
+      {waiting.length > 0 && (
         <div className="-mt-1 mb-3 flex items-center gap-2 text-xs text-gray-500">
           <p className="flex-1">Låtarna hämtas första gången du öppnar dem. Du kan också hämta allt på en gång.</p>
           <button className="btn-ghost shrink-0 px-3 py-1.5 text-xs" onClick={() => void fetchNow(null)}>
