@@ -8,34 +8,13 @@ ort.env.wasm.numThreads = 1
 
 let session: Promise<ort.InferenceSession> | null = null
 
-/** Downloads the model, telling the page how far it has come, since it is large on a slow line. */
 async function download(url: string): Promise<ArrayBuffer> {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Kunde inte hämta talmodellen (${res.status})`)
-  // May be the compressed size, so the share is only a guide.
-  const total = Number(res.headers.get('content-length') ?? 0)
-  if (!res.body) return res.arrayBuffer()
-  const chunks: Uint8Array[] = []
-  const reader = res.body.getReader()
-  let got = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-    got += value.length
-    if (total) self.postMessage({ progress: 0, loading: Math.min(0.99, got / total) })
-  }
-  const out = new Uint8Array(got)
-  let at = 0
-  for (const c of chunks) {
-    out.set(c, at)
-    at += c.length
-  }
-  return out.buffer
+  return res.arrayBuffer()
 }
 
 async function loadModel(url: string): Promise<ArrayBuffer> {
-  self.postMessage({ progress: 0, loading: 0 })
   try {
     const cache = await caches.open('singitnow-models')
     const hit = await cache.match(url)

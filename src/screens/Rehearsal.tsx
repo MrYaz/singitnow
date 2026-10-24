@@ -133,7 +133,7 @@ export default function Rehearsal({ songId }: { songId: string }) {
             }}
           >
             <span className="font-bold text-brand-700">
-              {refining === null ? `Texten för ${lyricVoice} är ungefärligt synkad. Tryck här för att finjustera.` : `Finjusterar synken för ${lyricVoice}… ${Math.round(refining * 100)} %`}
+              {refining === null ? `Texten för ${lyricVoice} är ungefärligt synkad. Tryck här för att finsynka.` : `Finsynkar texten för ${lyricVoice}… ${Math.round(refining * 100)} %`}
             </span>
           </button>
         )}

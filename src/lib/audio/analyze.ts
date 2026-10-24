@@ -75,6 +75,33 @@ function poolSize(): number {
 }
 
 let pool: Worker[] = []
+
+/** Puts the speech model in the cache the workers read it from, reporting how far the download has come. */
+async function cacheModel(onLoading: (share: number) => void): Promise<void> {
+  const url = modelUrl('ctc-en-small.int8.onnx')
+  try {
+    const cache = await caches.open('singitnow-models')
+    if (await cache.match(url)) return
+    const res = await fetch(url)
+    if (!res.ok || !res.body) return
+    // May be the compressed size, so the share is only a guide.
+    const total = Number(res.headers.get('content-length') ?? 0)
+    const chunks: Uint8Array[] = []
+    const reader = res.body.getReader()
+    let got = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      got += value.length
+      if (total) onLoading(Math.min(0.99, got / total))
+    }
+    await cache.put(url, new Response(new Blob(chunks as BlobPart[]), { headers: { 'content-type': 'application/octet-stream' } }))
+    onLoading(1)
+  } catch {
+    /* no Cache API (private mode): the workers download it themselves */
+  }
+}
 let nextId = 0
 
 async function runNow(pcm: Float32Array, spans: [number, number][], onProgress?: (share: number, loading?: number) => void): Promise<CtcOutput> {
@@ -91,7 +118,13 @@ async function runNow(pcm: Float32Array, spans: [number, number][], onProgress?:
   if (windows.length) windows[0].run = true
   const todo = windows.map((w, i) => (w.run ? i : -1)).filter((i) => i >= 0)
 
-  if (!pool.length) pool = Array.from({ length: poolSize() }, () => new Worker(new URL('./ctcWorker.ts', import.meta.url), { type: 'module' }))
+  // Download the model once, here, so the workers all find it in the cache instead of each downloading it.
+  if (!pool.length) {
+    await cacheModel((share) => onProgress?.(0, share))
+    // Each worker now loads the model, which takes a while before the first window is done.
+    onProgress?.(0, 0)
+    pool = Array.from({ length: poolSize() }, () => new Worker(new URL('./ctcWorker.ts', import.meta.url), { type: 'module' }))
+  }
   const results = new Map<number, { data: Float32Array; n: number; V: number }>()
   let done = 0
   let next = 0
@@ -110,10 +143,6 @@ async function runNow(pcm: Float32Array, spans: [number, number][], onProgress?:
       }
       w.onmessage = (e) => {
         const d = e.data
-        if (d.id === undefined) {
-          if (d.loading !== undefined && !done) onProgress?.(0, d.loading)
-          return
-        }
         if (d.error) return reject(new Error(d.error))
         results.set(current, { data: d.data, n: d.n, V: d.V })
         onProgress?.(++done / todo.length)

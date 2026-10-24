@@ -92,9 +92,12 @@ test('lists the songs first and fetches each one when it is opened', async ({ pa
   await page.getByRole('button', { name: 'Körrep' }).first().click()
   await expect(page.getByText('Ha webbläsaren framme')).toBeVisible()
   // The speech model times the lines as part of fetching.
-  await expect(page.getByText(/Finsynkar texten för Alt 2 \(1\//)).toBeVisible({ timeout: 300_000 })
+  await expect(page.getByText(/^Finsynkar Alt 2/)).toBeVisible({ timeout: 300_000 })
   expect(await page.evaluate(() => (window as unknown as { locks: number }).locks)).toBeGreaterThan(0)
-  await expect(page.getByText(/Finsynkar texten för Alt 2 \(1\/\d\), \d+ %/)).toBeVisible({ timeout: 300_000 })
+  await expect(page.getByText(/^Finsynkar Alt 2 [1-9]\d? %/)).toBeVisible({ timeout: 300_000 })
+  await page.screenshot({ path: 'test-results/stepped.png' })
+  // A moment at 100 % before the box closes.
+  await expect(page.getByText('Klart! ✓')).toBeVisible({ timeout: 600_000 })
   await expect(page.getByRole('heading', { name: 'Körrep' })).toBeVisible({ timeout: 600_000 })
   // Körrep keeps the screen on by itself; back home every lock is let go.
   await page.goBack()
