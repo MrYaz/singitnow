@@ -77,4 +77,27 @@ describe('speech-model timing', () => {
     expect(drifted([{ ...secs[0], start: 1, end: 2 }])).toBe(true)
     expect(drifted(out)).toBe(false)
   })
+
+  it('starts a part before the next part begins', () => {
+    const V = tokens.length
+    // "hello" (PDF 10 s) is faint at 12 s and clear at 25 s, after "world" (PDF 20 s) would begin.
+    const seq = Array(1000).fill(10)
+    const lp = new Float32Array(seq.length * V).fill(-20)
+    seq.forEach((k, t) => (lp[t * V + k] = 0))
+    lp[625 * V + 0] = 0
+    lp[625 * V + 10] = -20
+    lp[300 * V + 0] = -1
+    lp[300 * V + 10] = -2
+    ;[900, 901, 902, 903].forEach((t, i) => {
+      lp[t * V + [5, 6, 3, 7][i]] = 0
+      lp[t * V + 10] = -20
+    })
+    const line = (text: string) => ({ text, segs: [{ text, harmony: false, adlib: false }], harmony: false, adlib: false })
+    const secs: Section[] = [
+      { pdfStart: 10, pdfEnd: null, rest: false, note: null, others: [], lines: [line('Hello')] },
+      { pdfStart: 20, pdfEnd: null, rest: false, note: null, others: [], lines: [line('world')] },
+    ]
+    const out = applyCtc(secs, lp, seq.length, V, v)
+    expect(out[0].lines[0].start).toBeCloseTo(11.9, 1)
+  })
 })
