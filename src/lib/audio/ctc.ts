@@ -9,6 +9,9 @@ import { splitLines } from './align'
 export const CTC_FRAME = 0.04
 /** The model reports a word a little after it starts. */
 const LAG = 0.1
+/** How long before its PDF time a part may start, and how long after the next part's time it may go on. */
+const EARLY = 12
+const LATE = 15
 
 export interface Vocab {
   pieces: Map<string, number>
@@ -51,8 +54,17 @@ export function tokenize(word: string, v: Vocab): number[] {
 /**
  * Most likely path through the tokens, in order. Returns, per token, the frame where it is
  * first heard and the frame where it is last heard. `lp` is [frames x vocab] log-probabilities.
+ * `win`, if given, holds the first and last frame each token may be heard in. Returns null when
+ * no path fits those windows.
  */
-export function forceAlign(lp: Float32Array, frames: number, vocabSize: number, toks: number[], blank: number): { first: Int32Array; last: Int32Array } {
+export function forceAlign(
+  lp: Float32Array,
+  frames: number,
+  vocabSize: number,
+  toks: number[],
+  blank: number,
+  win?: { lo: Int32Array; hi: Int32Array },
+): { first: Int32Array; last: Int32Array } | null {
   const S = 2 * toks.length + 1
   const lab = new Int32Array(S)
   for (let s = 0; s < S; s++) lab[s] = s % 2 ? toks[(s - 1) >> 1] : blank
@@ -62,8 +74,9 @@ export function forceAlign(lp: Float32Array, frames: number, vocabSize: number, 
   let dp = new Float64Array(S).fill(NEG)
   let nd = new Float64Array(S)
   const back = new Uint8Array(frames * S)
+  const outside = (s: number, t: number) => win != null && s % 2 === 1 && (t < win.lo[(s - 1) >> 1] || t > win.hi[(s - 1) >> 1])
   dp[0] = lp[blank]
-  if (S > 1) dp[1] = lp[lab[1]]
+  if (S > 1 && !outside(1, 0)) dp[1] = lp[lab[1]]
   for (let t = 1; t < frames; t++) {
     const row = t * vocabSize
     for (let s = 0; s < S; s++) {
@@ -77,7 +90,7 @@ export function forceAlign(lp: Float32Array, frames: number, vocabSize: number, 
         best = dp[s - 2]
         k = 2
       }
-      nd[s] = best + lp[row + lab[s]]
+      nd[s] = outside(s, t) ? NEG : best + lp[row + lab[s]]
       back[t * S + s] = k
     }
     const tmp = dp
@@ -85,6 +98,7 @@ export function forceAlign(lp: Float32Array, frames: number, vocabSize: number, 
     nd = tmp
   }
   let s = S > 1 && dp[S - 2] > dp[S - 1] ? S - 2 : S - 1
+  if (dp[s] <= NEG / 2) return null
   const first = new Int32Array(toks.length).fill(-1)
   const last = new Int32Array(toks.length).fill(-1)
   for (let t = frames - 1; t >= 0; t--) {
@@ -100,6 +114,15 @@ export function forceAlign(lp: Float32Array, frames: number, vocabSize: number, 
 
 /** Sounds rather than words ("Oh…", "Ah, ah-ah", "Mm", "La la"). */
 const VOCALISE = /^(o+h*|wo+h?|a+h*|u+h*|e+h|h?m+|wh?oa+h?|(la)+|(na)+|(da)+|doo+|ha)$/
+
+/** Whether some part was timed outside the window around its PDF time that the fine-sync now keeps to. */
+export function drifted(sections: Section[]): boolean {
+  return sections.some((s, si) => {
+    if (s.start == null || s.pdfStart == null) return false
+    const next = sections.slice(si + 1).find((x) => x.pdfStart != null && x.pdfStart > s.pdfStart!)?.pdfStart
+    return s.start < s.pdfStart - EARLY || (next != null && s.end != null && s.end > next + LATE)
+  })
+}
 
 /** A line with only sounds. The speech model does not know them well, so the pauses in the voice time them better. */
 export function isVocalise(text: string): boolean {
@@ -126,7 +149,18 @@ export function applyCtc(sections: Section[], lp: Float32Array, frames: number, 
   )
   const out = structuredClone(sections)
   if (!toks.length) return out
-  const { first, last } = forceAlign(lp, frames, vocabSize, toks, v.blank)
+  // Each part is sung near the time its PDF gives: from a little before it until a little after the
+  // next part's time. Without this, a word the model hears badly can be pulled far from its place.
+  const lo = new Int32Array(toks.length)
+  const hi = new Int32Array(toks.length)
+  const at = (t: number) => Math.round(t / CTC_FRAME)
+  owner.forEach(([si], k) => {
+    const own = sections.slice(0, si + 1).findLast((x) => x.pdfStart != null)?.pdfStart
+    const next = sections.slice(si + 1).find((x) => x.pdfStart != null && x.pdfStart > (own ?? -1))?.pdfStart
+    lo[k] = own != null ? Math.max(0, at(own - EARLY)) : 0
+    hi[k] = next != null ? at(next + LATE) : frames
+  })
+  const { first, last } = forceAlign(lp, frames, vocabSize, toks, v.blank, { lo, hi }) ?? forceAlign(lp, frames, vocabSize, toks, v.blank)!
   const r2 = (x: number) => Math.round(x * 100) / 100
   // First and last token of every line.
   const range = new Map<string, [number, number]>()
