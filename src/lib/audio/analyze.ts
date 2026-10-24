@@ -53,19 +53,20 @@ let queue: Promise<unknown> = Promise.resolve()
  * Runs the speech model in a worker that stays alive between voices, so the model loads once.
  * Calls wait for each other, since the worker handles one file at a time.
  */
-export function runSpeechModel(pcm: Float32Array, spans: [number, number][], onProgress?: (share: number) => void): Promise<CtcOutput> {
+/** onProgress gets the share done, and while the model itself loads, how far that has come. */
+export function runSpeechModel(pcm: Float32Array, spans: [number, number][], onProgress?: (share: number, loading?: number) => void): Promise<CtcOutput> {
   const job = queue.then(() => runNow(pcm, spans, onProgress))
   queue = job.catch(() => {})
   return job
 }
 
-function runNow(pcm: Float32Array, spans: [number, number][], onProgress?: (share: number) => void): Promise<CtcOutput> {
+function runNow(pcm: Float32Array, spans: [number, number][], onProgress?: (share: number, loading?: number) => void): Promise<CtcOutput> {
   ctcWorker ??= new Worker(new URL('./ctcWorker.ts', import.meta.url), { type: 'module' })
   const w = ctcWorker
   return new Promise((resolve, reject) => {
     w.onmessage = (e) => {
       const d = e.data
-      if (d.progress !== undefined) onProgress?.(d.progress)
+      if (d.progress !== undefined) onProgress?.(d.progress, d.loading)
       else if (d.error) reject(new Error(d.error))
       else resolve(d as CtcOutput)
     }
