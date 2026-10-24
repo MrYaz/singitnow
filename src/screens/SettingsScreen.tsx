@@ -5,6 +5,7 @@ import { saveSettings } from '../lib/learn'
 import { sortVoices } from '../lib/names'
 import { addSongs, importSources } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder, shareLink } from '../lib/sources'
+import { folderTitle } from '../lib/group'
 import { useNav } from '../nav'
 import { useSettings } from '../settings'
 import { ImportPanel, ImportProgress } from '../components/ImportPanel'
@@ -96,7 +97,7 @@ export default function SettingsScreen() {
                 setMsg('')
                 progress('drive')('Letar efter nya låtar…')
                 try {
-                  const n = await addSongs(await listDriveFolder(settings.driveUrl))
+                  const n = await addSongs(await listDriveFolder(settings.driveUrl, undefined, (f, done, total) => progress('drive')(folderTitle(f), done, total)))
                   setMsg(n.length ? `${n.length} ${n.length === 1 ? 'låt är ny eller ändrad' : 'låtar är nya eller ändrade'}. De hämtas när du öppnar dem på startsidan.` : 'Inga nya låtar.')
                 } catch (e) {
                   setMsg(e instanceof Error ? e.message : String(e))

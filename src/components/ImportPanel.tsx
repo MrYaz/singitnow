@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { ImportError, addSongs, canWaitToFetch, importSources } from '../lib/importer'
+import { ImportError, addSongs, canWaitToFetch, importSources, type Step } from '../lib/importer'
 import { DRIVE_KEY, cleanDriveUrl, fromFileList, driveFolderId, listDriveFolder, takeLinkedDrive, type SourceFile } from '../lib/sources'
 import { saveSettings } from '../lib/learn'
 import { useSettings } from '../settings'
 import { Bar } from './ui'
+import { folderTitle } from '../lib/group'
 
 export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: (busy: boolean) => void }) {
   const { settings, reload } = useSettings()
@@ -18,7 +19,8 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
   const folderRef = useRef<HTMLInputElement>(null)
   const filesRef = useRef<HTMLInputElement>(null)
 
-  const run = async (get: () => Promise<SourceFile[]>, force = false) => {
+  /** `get` reads the files, and may name each song it finds along the way. */
+  const run = async (get: (found: (folder: string, done: number, total: number) => void) => Promise<SourceFile[]>, force = false) => {
     setBusy(true)
     onBusy?.(true)
     setErr('')
@@ -27,12 +29,18 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
       setMsg('Letar efter låtar…')
       setPhase('list')
       setPct(0)
-      const files = await get()
+      // The song titles flash past as the folders are read.
+      const files = await get((folder, done, total) => {
+        setMsg(folderTitle(folder))
+        setPct(total ? done / total : 0)
+      })
       if (canWaitToFetch(files) && !force) {
         // From Drive only the list is read now; each song downloads the first time it is opened.
         const noted = await addSongs(files)
         setMsg(noted.length ? `Klart! ${noted.length} ${noted.length === 1 ? 'låt' : 'låtar'} hittade. Varje låt hämtas första gången du öppnar den.` : 'Inga nya låtar sedan sist.')
         setPct(1)
+        // A moment at 100 %, so the box does not vanish the instant it is done.
+        await new Promise((r) => setTimeout(r, 900))
         onDone?.()
         return
       }
@@ -47,6 +55,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
       )
       setMsg(songs.length ? `Klart! ${songs.length} ${songs.length === 1 ? 'låt' : 'låtar'} inlästa.` : 'Inga nya låtar sedan sist.')
       setPct(1)
+      await new Promise((r) => setTimeout(r, 900))
       onDone?.()
     } catch (e) {
       setMsg('')
@@ -69,7 +78,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
     setUrl(clean)
     await saveSettings({ driveUrl: clean })
     await reload()
-    await run(() => listDriveFolder(clean))
+    await run((found) => listDriveFolder(clean, undefined, found))
   }
 
   // Opened from a link with the Drive folder in it: fetch the songs right away.
@@ -158,6 +167,7 @@ export function ImportProgress({
   summary,
   onCancel,
   kind = 'fetch',
+  steps,
 }: {
   text: string
   share: number
@@ -165,13 +175,20 @@ export function ImportProgress({
   onCancel?: () => void
   /** list: only the song list is read. fetch: download, analysis and exact timing. analyse: analysis, with the exact timing left for later. */
   kind?: 'list' | 'fetch' | 'analyse'
+  /** The parts of the job, each with its own bar, in place of one bar for everything. */
+  steps?: Step[]
 }) {
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 px-4" role="dialog" aria-modal="true" aria-label="Hämtar låtarna">
       <div className="pop card w-full max-w-md space-y-2 shadow-xl" aria-live="polite">
         {summary && <p className="text-sm font-black text-brand-700">{summary}</p>}
-        <p className="font-bold">{text}</p>
-        <Bar value={share} />
+        {steps ? (
+          <SteppedBar steps={steps} />        ) : (
+          <>
+            <p className="font-bold">{text}</p>
+            <Bar value={share} />
+          </>
+        )}
         {kind !== 'list' && (
           <>
             <p className="text-xs text-gray-500">
@@ -190,6 +207,33 @@ export function ImportProgress({
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+/** One bar cut into a segment per step (download, speech model, each voice), each filling on its own. */
+function SteppedBar({ steps }: { steps: Step[] }) {
+  const now = steps.find((st) => st.share < 1 && !st.failed) ?? steps.at(-1)!
+  const all = steps.every((st) => st.share >= 1 || st.failed)
+  return (
+    <div className="space-y-1.5">
+      <p className="font-bold">
+        {all ? (
+          'Klart! ✓'
+        ) : (
+          <>
+            {now.label} <span className="text-sm text-gray-500 tabular-nums">{Math.round(now.share * 100)} %</span>
+          </>
+        )}
+      </p>
+      <div className="flex gap-1" role="progressbar" aria-label={now.label} aria-valuenow={Math.round(now.share * 100)}>
+        {steps.map((st) => (
+          <div key={st.label} className="h-3 flex-1 overflow-hidden rounded-full bg-brand-100" title={st.label}>
+            <div className={`h-full rounded-full transition-all ${st.failed ? 'bg-gray-300' : 'bg-brand-500'}`} style={{ width: `${(st.failed ? 1 : st.share) * 100}%` }} />
+          </div>
+        ))}
+      </div>
+      {now.note && <p className="text-xs text-gray-500">{now.note}</p>}
     </div>
   )
 }

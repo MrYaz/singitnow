@@ -5,7 +5,7 @@ import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../
 import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
 import { pickVoice, shortVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
-import { ImportError, addSongs, fetchAllSongs, fetchSong } from '../lib/importer'
+import { ImportError, addSongs, fetchAllSongs, fetchSong, type Step } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder, takeLinkedDrive } from '../lib/sources'
 import { onRefineStatus, refineInBackground } from '../lib/refine'
 import { useNav, type LessonItem, type Screen } from '../nav'
@@ -58,7 +58,7 @@ export default function Home() {
 
   // Look for new songs in the choir's Drive folder once per app start. Only the list is fetched;
   // each song is downloaded the first time it is opened.
-  const [fetching, setFetching] = useState<{ msg: string; share: number; summary?: string } | null>(null)
+  const [fetching, setFetching] = useState<{ msg: string; share: number; summary?: string; steps?: Step[] } | null>(null)
   const stopFetch = useRef<AbortController | null>(null)
   const stopTally = useRef({ got: 0, total: 0 })
   /** Stops at the next file or voice; what is already downloaded is kept for next time. */
@@ -105,13 +105,18 @@ export default function Home() {
     const tally = { got: before, total: 0 }
     stopTally.current = tally
     try {
-      if (id) await fetchSong(id, (msg, done, n) => !stop.signal.aborted && setFetching({ msg, share: n ? done / n : 0 }), stop.signal, mineRef.current)
+      const title = (pending ?? []).find((p) => p.id === id)?.title
+      if (id) await fetchSong(id, (msg, done, n, steps) => !stop.signal.aborted && setFetching({ msg, share: n ? done / n : 0, summary: title, steps }), stop.signal, mineRef.current)
       else
-        await fetchAllSongs((msg, done, n) => {
+        await fetchAllSongs((msg, done, n, steps) => {
           tally.got = before + Math.floor(done)
           tally.total = before + n
-          if (!stop.signal.aborted) setFetching({ msg, share: n ? done / n : 0, summary: `Hämtat ${tally.got} av ${tally.total} låtar` })
+          if (!stop.signal.aborted) setFetching({ msg, share: n ? done / n : 0, summary: `Hämtat ${tally.got} av ${tally.total} låtar`, steps })
         }, stop.signal, mineRef.current)
+      if (stop.signal.aborted) return
+      // A moment at 100 %, so the box does not vanish the instant it is done.
+      setFetching((f) => f && { ...f, share: 1, msg: 'Klart!', steps: f.steps?.map((x) => ({ ...x, share: 1, note: undefined })) })
+      await new Promise((r) => setTimeout(r, 1200))
       if (stop.signal.aborted) return
       setFetching(null)
       if (then) nav.go(then)
@@ -311,7 +316,7 @@ export default function Home() {
         })}
       </ul>
 
-      {fetching && <ImportProgress text={fetching.msg} share={fetching.share} summary={fetching.summary} onCancel={cancelFetch} />}
+      {fetching && <ImportProgress text={fetching.msg} share={fetching.share} summary={fetching.summary} steps={fetching.steps} onCancel={cancelFetch} />}
       {fetchErr && (
         <Sheet open onClose={() => setFetchErr(null)}>
           <div className="space-y-2 text-sm">
@@ -345,7 +350,7 @@ export default function Home() {
 
       {refine && (
         <p className="fixed inset-x-0 bottom-0 bg-white/90 px-4 pt-1.5 pb-[max(env(safe-area-inset-bottom),6px)] text-center text-xs text-gray-500 backdrop-blur" aria-live="polite" title={refine.text}>
-          Finjusterar synken i bakgrunden, du kan fortsätta att öva. {Math.round(refine.share * 100)} %
+          Finsynkar texterna i bakgrunden, du kan fortsätta att öva. {Math.round(refine.share * 100)} %
         </p>
       )}
     </main>

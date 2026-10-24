@@ -148,15 +148,19 @@ export function driveFile(f: PendingFile, key = DRIVE_KEY): SourceFile {
   }
 }
 
-/** Lists audio and PDF files in a public Drive folder, three levels deep. */
-export async function listDriveFolder(folderUrl: string, key = DRIVE_KEY): Promise<SourceFile[]> {
+/** Lists audio and PDF files in a public Drive folder, three levels deep. `onSong` hears each song folder as it is read. */
+export async function listDriveFolder(folderUrl: string, key = DRIVE_KEY, onSong?: (folder: string, done: number, total: number) => void): Promise<SourceFile[]> {
   if (!key) throw new Error('Appen saknar en Google API-nyckel.')
   const root = driveFolderId(folderUrl)
   if (!root) throw new Error('Det ser inte ut som en länk till en Drive-mapp.')
   const files: SourceFile[] = []
   const walk = async (id: string, path: string[], depth: number) => {
-    for (const it of await listChildren(id, key)) {
+    const items = await listChildren(id, key)
+    const folders = items.filter((it) => it.mimeType === 'application/vnd.google-apps.folder').sort((a, b) => a.name.localeCompare(b.name, 'sv', { numeric: true }))
+    let n = 0
+    for (const it of [...folders, ...items.filter((x) => !folders.includes(x))]) {
       if (it.mimeType === 'application/vnd.google-apps.folder') {
+        if (depth === 0) onSong?.(it.name, n++, folders.length)
         if (depth < 3) await walk(it.id, [...path, it.name], depth + 1)
       } else if (/\.(mp3|m4a|wav|pdf)$/i.test(it.name)) {
         files.push(driveFile({ driveId: it.id, path, name: it.name, size: Number(it.size ?? 0), modified: it.modifiedTime }, key))

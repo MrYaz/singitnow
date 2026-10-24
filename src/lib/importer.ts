@@ -10,7 +10,16 @@ import { keepAwake } from './wakelock'
 import { holdRefine, needsRefine, refineVoice } from './refine'
 import { pickVoice } from './names'
 
-export type Progress = (msg: string, done: number, total: number) => void
+/** One part of fetching a song, shown as its own bar. */
+export interface Step {
+  label: string
+  share: number
+  /** What is going on within the step right now, or why it failed. */
+  note?: string
+  failed?: boolean
+}
+
+export type Progress = (msg: string, done: number, total: number, steps?: Step[]) => void
 
 /** Bump when the analysis changes so stored songs get re-analysed. */
 export const ANALYSIS_VERSION = 1
@@ -95,38 +104,67 @@ export const canWaitToFetch = (sources: SourceFile[]) => sources.length > 0 && s
 export async function fetchSong(id: string, onProgress: Progress, signal?: AbortSignal, mine: string[] = []): Promise<Song | undefined> {
   const row = await db.pending.get(id)
   if (!row) return db.songs.get(id)
-  // Downloading and the first analysis are the smaller part; the speech model takes most of the time.
-  const DL = 0.35
+  // Your voices first, then the others, as the timing below goes.
+  const own = pickVoice(Object.fromEntries(row.voices.map((v) => [v, true])), mine)
+  const order = own ? [own, ...row.voices.filter((v) => v !== own)] : row.voices
+  const steps: Step[] = [{ label: 'Hämtar och lyssnar igenom låten', share: 0 }, ...order.map((v) => ({ label: `Finsynkar ${v}`, share: 0 }))]
+  const emit = (msg: string) => {
+    const done = steps.reduce((a, x) => a + (x.failed ? 1 : x.share), 0) / steps.length
+    onProgress(msg, done, 1, steps.map((x) => ({ ...x })))
+  }
   const resume = holdRefine()
   // One screen lock for the whole job: the import lets go of its own when the download is done.
   const release = keepAwake()
   try {
-    await importSources(row.files.map((f) => driveFile(f)), (msg, done, total) => onProgress(msg, DL * (total ? done / total : 0), 1), false, signal)
+    await importSources(
+      row.files.map((f) => driveFile(f)),
+      (msg, done, total) => {
+        // Not full until the import is over: a song Google turned away waits here for its second try.
+        steps[0].share = Math.min(0.99, total ? done / total : 0)
+        steps[0].note = msg
+        emit(msg)
+      },
+      false,
+      signal,
+    )
+    steps[0].share = 1
+    steps[0].note = undefined
     await db.pending.delete(id)
     const first = await db.songs.get(id)
     if (!first) return undefined
-    const voices = needsRefine([first], (s) => pickVoice(s.voices, mine)).map((x) => x.voice)
-    for (let i = 0; i < voices.length; i++) {
+    const left = new Set(needsRefine([first], (s) => pickVoice(s.voices, mine)).map((x) => x.voice))
+    for (const v of order) {
+      const step = steps.find((x) => x.label === `Finsynkar ${v}`)!
+      if (!left.has(v)) {
+        step.share = 1
+        continue
+      }
       signal?.throwIfAborted()
-      const label = `Finsynkar texten för ${voices[i]} (${i + 1}/${voices.length})`
-      onProgress(`${label}…`, DL + ((1 - DL) * i) / voices.length, 1)
+      emit(`${step.label}…`)
       try {
         const song = (await db.songs.get(id))!
-        await refineVoice(song, voices[i], (share, loading) =>
-          onProgress(
-            loading === undefined
-              ? `${label}, ${Math.round(share * 100)} %`
-              : loading > 0
-                ? `${label}: laddar ner talmodellen, bara första gången (${Math.round(loading * 100)} %)`
-                : `${label}: startar talmodellen…`,
-            DL + ((1 - DL) * (i + share)) / voices.length,
-            1,
-          ),
-        )
+        let model: Step | undefined
+        await refineVoice(song, v, (share, loading) => {
+          if (loading !== undefined && loading > 0) {
+            // The speech model is downloaded once, the first time: its own bar, before this voice.
+            if (!model) steps.splice(steps.indexOf(step), 0, (model = { label: 'Hämtar talmodellen (46 MB, bara första gången)', share: 0 }))
+            model.share = loading
+            return emit(model.label)
+          }
+          if (model) model.share = 1
+          step.note = loading === 0 ? 'startar talmodellen…' : undefined
+          step.share = share
+          emit(step.label)
+        })
+        step.share = 1
+        step.note = undefined
       } catch (e) {
         // The rough timing still works; the background sync tries again later.
-        console.warn('Could not refine', id, voices[i], e)
+        console.warn('Could not refine', id, v, e)
+        step.failed = true
+        step.note = 'gick inte nu, görs senare i bakgrunden'
       }
+      emit(step.label)
     }
     return db.songs.get(id)
   } finally {
@@ -143,7 +181,7 @@ export async function fetchAllSongs(onProgress: Progress, signal?: AbortSignal, 
   for (let i = 0; i < rows.length; i++) {
     try {
       signal?.throwIfAborted()
-      const song = await fetchSong(rows[i].id, (msg, done, total) => onProgress(msg, i + (total ? done / total : 0), rows.length), signal, mine)
+      const song = await fetchSong(rows[i].id, (msg, done, total, steps) => onProgress(msg, i + (total ? done / total : 0), rows.length, steps), signal, mine)
       if (song) got.push(song)
     } catch (e) {
       if (signal?.aborted) throw e
