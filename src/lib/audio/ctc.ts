@@ -12,6 +12,8 @@ const LAG = 0.1
 /** How long before its PDF time a part may start, and how long after the next part's time it may go on. */
 const EARLY = 12
 const LATE = 15
+/** A part begins before the next part's PDF time, give or take this much. */
+const BEGIN_LATE = 1
 
 export interface Vocab {
   pieces: Map<string, number>
@@ -120,7 +122,7 @@ export function drifted(sections: Section[]): boolean {
   return sections.some((s, si) => {
     if (s.start == null || s.pdfStart == null) return false
     const next = sections.slice(si + 1).find((x) => x.pdfStart != null && x.pdfStart > s.pdfStart!)?.pdfStart
-    return s.start < s.pdfStart - EARLY || (next != null && s.end != null && s.end > next + LATE)
+    return s.start < s.pdfStart - EARLY || (next != null && (s.start > next + BEGIN_LATE || (s.end != null && s.end > next + LATE)))
   })
 }
 
@@ -149,16 +151,18 @@ export function applyCtc(sections: Section[], lp: Float32Array, frames: number, 
   )
   const out = structuredClone(sections)
   if (!toks.length) return out
-  // Each part is sung near the time its PDF gives: from a little before it until a little after the
-  // next part's time. Without this, a word the model hears badly can be pulled far from its place.
+  // Each part is sung near the time its PDF gives: it begins between a little before its own time and
+  // the next part's time, and ends at the latest a little after the next part's time. Without this,
+  // a word the model hears badly can be pulled far from its place.
   const lo = new Int32Array(toks.length)
   const hi = new Int32Array(toks.length)
   const at = (t: number) => Math.round(t / CTC_FRAME)
   owner.forEach(([si], k) => {
+    const begins = k === 0 || owner[k - 1][0] !== si
     const own = sections.slice(0, si + 1).findLast((x) => x.pdfStart != null)?.pdfStart
     const next = sections.slice(si + 1).find((x) => x.pdfStart != null && x.pdfStart > (own ?? -1))?.pdfStart
     lo[k] = own != null ? Math.max(0, at(own - EARLY)) : 0
-    hi[k] = next != null ? at(next + LATE) : frames
+    hi[k] = next != null ? at(next + (begins ? BEGIN_LATE : LATE)) : frames
   })
   const { first, last } = forceAlign(lp, frames, vocabSize, toks, v.blank, { lo, hi }) ?? forceAlign(lp, frames, vocabSize, toks, v.blank)!
   const r2 = (x: number) => Math.round(x * 100) / 100

@@ -40,12 +40,12 @@ export async function refineVoice(song: Song, voice: string, onProgress?: (share
 }
 
 /** Bump when lyrics reading or fine-sync changes in a way that needs songs already fetched to be redone. */
-export const TIMING_VERSION = 3
+export const TIMING_VERSION = 4
 
 /**
  * Brings songs fetched with an older version up to date without downloading anything: reads the
  * stored PDF again and redoes the timing of the voices it changes, or that have parts with only
- * sounds ("Oh…") (version 2), or parts the fine-sync put far from their PDF time (version 3). The background queue then fine-syncs them again.
+ * sounds ("Oh…") (version 2), or parts the fine-sync put far from their PDF time (versions 3 and 4). The background queue then fine-syncs them again.
  */
 export async function upgradeTiming(): Promise<void> {
   const songs = (await db.songs.toArray()) as (Song & { tv?: number })[]
