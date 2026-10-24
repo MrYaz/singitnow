@@ -161,10 +161,11 @@ export default function Home() {
     if (!v) return null
     const secs = learnable(v.sections)
     const lv = levels[s.id] ?? {}
-    // A learning method counts as done when every part of the song is done with it.
-    const methods = LEVELS.filter((_, m) => secs.length > 0 && secs.every((x) => isDone(lv[x.i], m))).length
-    const steps = secs.reduce((a, x) => a + LEVELS.filter((_, m) => isDone(lv[x.i], m)).length, 0)
-    return { done: methods, total: LEVELS.length, share: secs.length ? steps / (secs.length * LEVELS.length) : 0 }
+    // Stämrep first, then each learning method. One counts as done when every part is done with it.
+    const left = unheard(s).length
+    const methods = LEVELS.filter((_, m) => secs.length > 0 && secs.every((x) => isDone(lv[x.i], m))).length + (secs.length > 0 && !left ? 1 : 0)
+    const steps = secs.reduce((a, x) => a + LEVELS.filter((_, m) => isDone(lv[x.i], m)).length, 0) + secs.length - left
+    return { done: methods, total: LEVELS.length + 1, share: secs.length ? steps / (secs.length * (LEVELS.length + 1)) : 0 }
   }
 
   // Next thing to learn: the first method not done on every part, at its first part not done.
@@ -317,7 +318,7 @@ export default function Home() {
                   <>
                     <Bar value={p.share} className="mt-2 h-2" />
                     <p className="mt-1 text-xs font-bold text-gray-500">
-                      {p.done} av {p.total} inlärningssätt klara
+                      {p.done} av {p.total} moment klara
                     </p>
                   </>
                 ) : (

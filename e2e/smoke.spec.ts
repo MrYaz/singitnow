@@ -54,6 +54,8 @@ test('import, learn and rehearse', async ({ page }) => {
   )
   await page.reload()
   await expect(page.getByRole('button', { name: 'Stämrep ✓' }).first()).toBeVisible()
+  // The card's bar counts Stämrep as the first of its steps.
+  await expect(page.getByText(/^1 av 7 moment klara$/).first()).toBeVisible()
   await page.getByRole('button', { name: /^Why did it have to be me/ }).click()
   await expect(page.getByRole('button', { name: 'Avsluta' })).toBeVisible()
   await page.getByRole('button', { name: 'Avsluta' }).click()
