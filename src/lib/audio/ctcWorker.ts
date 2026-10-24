@@ -3,15 +3,6 @@ import * as ort from 'onnxruntime-web/wasm'
 import wasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url'
 import { FBANK_BINS, fbank, normalizeFeatures } from './fbank'
 
-/**
- * Runs the speech model on a voice file and returns log-probabilities per 40 ms frame.
- * Long files are cut into overlapping windows; only the middle of each window is kept.
- */
-const SR = 16000
-const WIN = 20
-const OVERLAP = 3
-const FRAMES_PER_SEC = 25
-
 ort.env.wasm.wasmPaths = { wasm: wasmUrl }
 ort.env.wasm.numThreads = 1
 
@@ -71,46 +62,21 @@ async function run(pcm: Float32Array): Promise<ort.Tensor> {
   return out[s.outputNames[0]]
 }
 
-self.onmessage = async (e: MessageEvent<{ modelUrl: string; pcm: Float32Array; spans: [number, number][] }>) => {
+/**
+ * Runs the model on one window of audio. The page cuts the voice into windows and spreads them
+ * over several of these workers, one per core, then puts the results together (see analyze.ts).
+ */
+self.onmessage = async (e: MessageEvent<{ id: number; modelUrl: string; pcm: Float32Array }>) => {
+  const { id } = e.data
   try {
     session ??= loadModel(e.data.modelUrl).then((buf) => ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }))
-    await session
-    self.postMessage({ progress: 0 })
-    const pcm = e.data.pcm
-    const dur = pcm.length / SR
-    const total = Math.ceil(dur * FRAMES_PER_SEC)
-    let vocab = 0
-    let res: Float32Array | null = null
-    let filled = 0
-    const sings = (a: number, b: number) => e.data.spans.some(([s0, s1]) => s1 > a && s0 < b)
-    for (let t = 0; t < dur; t += WIN) {
-      const a = Math.max(0, t - OVERLAP)
-      const b = Math.min(dur, t + WIN + OVERLAP)
-      if (vocab && !sings(a, b)) {
-        // Nobody sings here: mark the window as silence without running the model.
-        const g = Math.round(t * FRAMES_PER_SEC)
-        const n = Math.round(Math.min(WIN, dur - t) * FRAMES_PER_SEC)
-        for (let f = g; f < g + n; f++) {
-          res!.fill(-30, f * vocab, (f + 1) * vocab)
-          res![f * vocab + vocab - 1] = 0
-        }
-        filled = g + n
-        continue
-      }
-      const out = await run(pcm.subarray(Math.floor(a * SR), Math.floor(b * SR)))
-      const [, n, V] = out.dims as number[]
-      vocab = V
-      res ??= new Float32Array((total + 50) * V)
-      const s = Math.round((t - a) * FRAMES_PER_SEC)
-      const e2 = Math.min(n, s + Math.round(Math.min(WIN, dur - t) * FRAMES_PER_SEC))
-      const g = Math.round(t * FRAMES_PER_SEC)
-      res.set((out.data as Float32Array).subarray(s * V, e2 * V), g * V)
-      filled = g + (e2 - s)
-      self.postMessage({ progress: Math.min(1, (t + WIN) / dur) })
-    }
-    const lp = res!.slice(0, filled * vocab)
-    self.postMessage({ lp, frames: filled, vocab }, [lp.buffer])
+    const out = await run(e.data.pcm)
+    const [, n, V] = out.dims as number[]
+    const data = (out.data as Float32Array).slice()
+    self.postMessage({ id, data, n, V }, [data.buffer])
   } catch (err) {
-    self.postMessage({ error: err instanceof Error ? err.message : String(err) })
+    // A failed load is tried again with the next window.
+    session = null
+    self.postMessage({ id, error: err instanceof Error ? err.message : String(err) })
   }
 }
