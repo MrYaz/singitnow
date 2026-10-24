@@ -8,6 +8,7 @@ import { refineVoice } from '../lib/refine'
 import { withAllVoices } from '../lib/merge'
 import { LineText, OthersText, TopBar, fmt, othersVoices } from '../components/ui'
 import type { Line } from '../lib/types'
+import { barLoop, stepBy, subdivisions, type Beats } from '../lib/audio/beats'
 import { useNav, type Screen } from '../nav'
 
 interface Track {
@@ -74,8 +75,9 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
     if (mi < 0) return
     const st = merged[mi].start ?? merged[mi].pdfStart ?? 0
     const en = merged[mi].end ?? st + 10
-    setLoop({ from: Math.max(0, st - 0.8), to: en + 0.6, label: `Del ${mi + 1}` })
-    mixer.seek(Math.max(0, st - 0.8))
+    const pl = partLoop(song.beats, st, en)
+    setLoop({ ...pl, label: `Del ${mi + 1}` })
+    mixer.seek(pl.from)
     requestAnimationFrame(() => document.getElementById(`del-${mi}`)?.scrollIntoView({ block: 'center' }))
   }, [ready, song, part, own?.voice, mixer])
 
@@ -113,7 +115,7 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
     else await mixer.play({ from })
   }
   const toggle = () => (playing ? mixer.stop() : void play(loop ? loop.from : t))
-  const loopIt = (from: number, to: number, label: string) => {
+  const loopIt = ({ from, to }: { from: number; to: number }, label: string) => {
     // A second tap on what is already looping turns the loop off and lets the song play on.
     if (loop?.label === label) return clearLoop()
     if (loop?.label !== label) setTrimming(false)
@@ -131,15 +133,18 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
   const ownTrack = song.voices[lyricVoice]
   const ownIndex = (si: number) => (ownTrack ? ownTrack.sections.findIndex((x) => x.lines === sections[si].lines) : -1)
 
-  /** Moves the start or end of a line by `d` seconds, saves it, and loops the line again with the new times. */
-  const trim = async (si: number, li: number, field: 'start' | 'end', d: number) => {
+  /**
+   * Moves the start or end of a line one step (a subdivision of the beat, or a quarter second when
+   * the beat is unknown), saves it, and loops the line again with the new times.
+   */
+  const trim = async (si: number, li: number, field: 'start' | 'end', d: -1 | 1) => {
     const k = ownIndex(si)
     if (k < 0 || !ownTrack) return
     const secs = structuredClone(ownTrack.sections)
     const line = secs[k].lines[li]
     const st = secs[k].start ?? secs[k].pdfStart ?? 0
     const before = { start: line.start ?? st, end: line.end ?? st + 4 }
-    const v = Math.round((before[field] + d) * 100) / 100
+    const v = song.beats ? stepBy(song.beats, before[field], d) : Math.round((before[field] + d * 0.25) * 100) / 100
     if (field === 'start' ? v >= before.end - 0.2 || v < 0 : v <= before.start + 0.2) return
     line.start = before.start
     line.end = before.end
@@ -149,7 +154,7 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
     await db.songs.update(songId, (x) => {
       if (x.voices[lyricVoice]) x.voices[lyricVoice].sections = secs
     })
-    const l = { from: Math.max(0, line.start! - 0.3), to: line.end! + 0.4, label: `${si}:${li}` }
+    const l = { ...lineLoop(song.beats, line.start!, line.end!), label: `${si}:${li}` }
     setLoop(l)
     // A new start is heard at once; a new end is heard just before it.
     void play(field === 'start' ? l.from : Math.max(l.from, l.to - 2.5), l)
@@ -209,7 +214,7 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
             return (
               <section key={si} id={`del-${si}`} className={`card transition ${inSec && playing ? 'border-brand-400' : ''}`}>
                 <div className="mb-2 flex items-center gap-2">
-                  <button className="text-xs font-black tracking-wide text-brand-600 uppercase" onClick={() => loopIt(st - 0.8, en + 0.6, `Del ${si + 1}`)}>
+                  <button className="text-xs font-black tracking-wide text-brand-600 uppercase" onClick={() => loopIt(partLoop(song.beats, st, en), `Del ${si + 1}`)}>
                     🔁 Del {si + 1} · {fmt(st).replace(/\.\d$/, '')}
                   </button>
                   {s.rest && (
@@ -230,7 +235,7 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
                   )}
                 </div>
                 {trimming && loopedLine != null && ownIndex(si) >= 0 && (
-                  <TrimPanel line={s.lines[loopedLine]} onTrim={(field, d) => void trim(si, loopedLine, field, d)} />
+                  <TrimPanel line={s.lines[loopedLine]} step={stepName(song.beats)} onTrim={(field, d) => void trim(si, loopedLine, field, d)} />
                 )}
                 {!hideText &&
                   s.lines.map((l, li) => {
@@ -240,7 +245,7 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
                       <button
                         key={li}
                         className={`block w-full rounded-lg px-1 py-1 text-left text-lg transition ${on ? 'bg-brand-100 font-extrabold text-brand-700' : ''} ${looped ? 'ring-2 ring-brand-400' : ''}`}
-                        onClick={() => loopIt((l.start ?? st) - 0.3, (l.end ?? en) + 0.4, `${si}:${li}`)}
+                        onClick={() => loopIt(lineLoop(song.beats, l.start ?? st, l.end ?? en), `${si}:${li}`)}
                       >
                         <LineText line={l} />
                       </button>
@@ -282,6 +287,11 @@ export default function Rehearsal({ songId, part, then }: { songId: string; part
               </label>
             ))}
             <p className="text-xs text-gray-400">Varje stämfil har kompet inbakat, så kompet blir starkare när du mixar flera.</p>
+            {song.beats && (
+              <p className="text-xs text-gray-400">
+                Tempo {Math.round(song.beats.bpm)} slag/min i {song.beats.meter}/4-takt. Looparna är hela takter.
+              </p>
+            )}
           </div>
         )}
         <input
@@ -333,8 +343,8 @@ function TrimIcon() {
   )
 }
 
-function TrimPanel({ line, onTrim }: { line: Line; onTrim: (field: 'start' | 'end', d: number) => void }) {
-  const step = (field: 'start' | 'end', d: number, label: string) => (
+function TrimPanel({ line, step: size, onTrim }: { line: Line; step: string; onTrim: (field: 'start' | 'end', d: -1 | 1) => void }) {
+  const step = (field: 'start' | 'end', d: -1 | 1, label: string) => (
     <button className="rounded-lg bg-white px-3 py-1.5 font-black text-brand-700 shadow-[0_2px_0_#d6c4ff]" aria-label={label} onClick={() => onTrim(field, d)}>
       {d < 0 ? '−' : '+'}
     </button>
@@ -344,12 +354,28 @@ function TrimPanel({ line, onTrim }: { line: Line; onTrim: (field: 'start' | 'en
       {(['start', 'end'] as const).map((f) => (
         <div key={f} className="flex items-center gap-2">
           <span className="w-10 text-xs font-bold text-gray-500">{f === 'start' ? 'Start' : 'Slut'}</span>
-          {step(f, -0.25, f === 'start' ? 'Börja tidigare' : 'Sluta tidigare')}
+          {step(f, -1, f === 'start' ? 'Börja tidigare' : 'Sluta tidigare')}
           <span className="w-16 text-center font-bold tabular-nums">{fmt(line[f])}</span>
-          {step(f, 0.25, f === 'start' ? 'Börja senare' : 'Sluta senare')}
+          {step(f, 1, f === 'start' ? 'Börja senare' : 'Sluta senare')}
         </div>
       ))}
-      <p className="text-xs text-gray-500">Flytta raden en kvarts sekund i taget. Ändringen sparas direkt och loopen spelar om.</p>
+      <p className="text-xs text-gray-500">Flytta raden {size} i taget. Ändringen sparas direkt och loopen spelar om.</p>
     </div>
   )
+}
+
+/** A loop around a line: whole bars on the song's beat when it is known, else a little air either side. */
+function lineLoop(b: Beats | null | undefined, start: number, end: number) {
+  return b ? barLoop(b, start - 0.25, end + 0.1) : { from: Math.max(0, start - 0.3), to: end + 0.4 }
+}
+
+/** A loop around a whole part, in whole bars when the beat is known. */
+function partLoop(b: Beats | null | undefined, start: number, end: number) {
+  return b ? barLoop(b, start - 0.6, end + 0.1) : { from: Math.max(0, start - 0.8), to: end + 0.6 }
+}
+
+/** What one trim step is, in words. */
+function stepName(b: Beats | null | undefined) {
+  if (!b) return 'en kvarts sekund'
+  return subdivisions(b) === 4 ? 'en sextondel' : 'en åttondel'
 }

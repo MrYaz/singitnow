@@ -1,3 +1,4 @@
+import type { Beats } from './beats'
 import type { Span } from './activity'
 import { ANALYSIS_RATE } from './activity'
 import { decodeMono } from './decode'
@@ -23,6 +24,23 @@ export function analyzeInWorker(voice: Float32Array, music: Float32Array): Promi
     const v = voice.slice()
     const m = music.slice()
     w.postMessage({ voice: v, music: m }, [v.buffer, m.buffer])
+  })
+}
+
+/** Tempo, beats and bars of the Musik track, found in a worker. */
+export function beatsInWorker(music: Float32Array): Promise<Beats | null> {
+  return new Promise((resolve, reject) => {
+    const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
+    w.onmessage = (e) => {
+      resolve((e.data as { beats: Beats | null }).beats)
+      w.terminate()
+    }
+    w.onerror = (e) => {
+      reject(new Error(e.message || 'Taktanalysen misslyckades'))
+      w.terminate()
+    }
+    const m = music.slice()
+    w.postMessage({ music: m }, [m.buffer])
   })
 }
 

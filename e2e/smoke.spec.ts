@@ -73,6 +73,8 @@ test('import, learn and rehearse', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Spela' })).toBeEnabled({ timeout: 60_000 })
   await expect(page.getByRole('button', { name: 'ALLA', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Mixer' }).click()
+  // The beat is found on import, so loops can be whole bars.
+  await expect(page.getByText(/Tempo \d+ slag\/min i [34]\/4-takt/)).toBeVisible()
   await page.screenshot({ path: 'test-results/06-rehearsal.png' })
   await page.getByRole('button', { name: 'Mixer' }).click()
 
@@ -81,6 +83,7 @@ test('import, learn and rehearse', async ({ page }) => {
   await page.locator('main section button.block').first().click()
   await page.getByRole('button', { name: 'Justera radens tider' }).click()
   const startText = page.getByRole('button', { name: 'Börja senare' }).locator('xpath=preceding-sibling::span[1]')
+  await expect(page.getByText(/Flytta raden en (åttondel|sextondel) i taget/)).toBeVisible()
   const before = await startText.innerText()
   await page.getByRole('button', { name: 'Börja senare' }).click()
   await expect(startText).not.toHaveText(before)

@@ -1,6 +1,6 @@
 import { db } from './db'
 import type { Song } from './types'
-import { decodeForAnalysis, loadTokens, runSpeechModel } from './audio/analyze'
+import { beatsInWorker, decodeForAnalysis, loadTokens, runSpeechModel } from './audio/analyze'
 import { applyCtc, drifted, isVocalise, makeVocab } from './audio/ctc'
 import { alignLyrics } from './audio/align'
 import { readLyricsPdf } from './pdf/load'
@@ -80,6 +80,26 @@ export async function upgradeTiming(): Promise<void> {
   }
 }
 
+/** Finds tempo and bars for songs fetched before the app looked for them. */
+export async function addBeats(): Promise<void> {
+  const songs = await db.songs.toArray()
+  for (const song of songs) {
+    if (song.beats !== undefined || !song.musikFileId) continue
+    await whileHeld()
+    try {
+      const file = await db.files.get(song.musikFileId)
+      if (!file) continue
+      const { pcm } = await decodeForAnalysis(file.blob)
+      const beats = await beatsInWorker(pcm)
+      await db.songs.update(song.id, (s) => {
+        if (s.musikFileId === song.musikFileId) s.beats = beats
+      })
+    } catch (e) {
+      console.warn('Could not find the beat of', song.title, e)
+    }
+  }
+}
+
 /**
  * Voices that still have the rough timing: first the voice you practise in every song, then all
  * the other voices, since Stämrep and Körrep show what they sing next to yours.
@@ -135,6 +155,7 @@ export async function refineInBackground(pick: (s: Song) => string | null): Prom
   running = true
   try {
     await upgradeTiming().catch((e) => console.warn('Could not upgrade timings', e))
+    await addBeats().catch((e) => console.warn('Could not add beats', e))
     const failed = new Set<string>()
     let done = 0
     for (;;) {
