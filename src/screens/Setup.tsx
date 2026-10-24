@@ -6,6 +6,10 @@ import { sortVoices } from '../lib/names'
 import { useSettings } from '../settings'
 import { ImportPanel } from '../components/ImportPanel'
 import { VoicePicker } from '../components/VoicePicker'
+import headphones from '../assets/emoji/headphones.svg'
+import memo from '../assets/emoji/memo.svg'
+import notes from '../assets/emoji/notes.svg'
+import score from '../assets/emoji/score.svg'
 
 export default function Setup() {
   const { settings, reload } = useSettings()
@@ -28,25 +32,25 @@ export default function Setup() {
   return (
     <main className="space-y-5 px-4 pt-[max(env(safe-area-inset-top),24px)] pb-10">
       <div className="pop text-center">
-        <div className="text-6xl">🎶</div>
+        <img src={notes} alt="" className="mx-auto h-16 w-16" />
         <h1 className="mt-2 text-3xl font-black text-brand-700">SingItNow</h1>
         <p className="mt-2 text-gray-600">Öva in körens låtar hemma, så att du kan sjunga fritt med hela kroppen. Inga krav, bara glädje.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 text-center">
         <div className="card">
-          <p className="text-2xl">🎚️</p>
-          <p className="mt-1 font-black">Stämrep</p>
+          <img src={headphones} alt="" className="mx-auto h-10 w-10" />
+          <p className="mt-2 font-black">Stämrep</p>
           <p className="text-sm text-gray-600">Lyssna på din stämma eller ALLA, loopa en fras om och om igen och mixa stämmorna.</p>
         </div>
         <div className="card">
-          <p className="text-2xl">✍️</p>
-          <p className="mt-1 font-black">Textträning</p>
+          <img src={memo} alt="" className="mx-auto h-10 w-10" />
+          <p className="mt-2 font-black">Textträning</p>
           <p className="text-sm text-gray-600">Lär dig texten utantill del för del, med sex olika inlärningssätt.</p>
         </div>
         <div className="card col-span-2">
-          <p className="text-2xl">📖</p>
-          <p className="mt-1 font-black">Körrep</p>
+          <img src={score} alt="" className="mx-auto h-10 w-10" />
+          <p className="mt-2 font-black">Körrep</p>
           <p className="text-sm text-gray-600">Bara texten, stor och lättläst på mobilen eller läsplattan, med allt från körens PDF:er.</p>
         </div>
       </div>
@@ -62,9 +66,14 @@ export default function Setup() {
           <h2 className="text-xl font-extrabold">2. Vilken stämma sjunger du?</h2>
           <p className="text-sm text-gray-600">Osäker? Välj den som känns mest bekväm. Du kan byta när som helst.</p>
           <VoicePicker all={voices} value={picked} onChange={setPicked} />
-          <h2 className="text-xl font-extrabold">3. Vad heter du?</h2>
+          <h2 className="text-xl font-extrabold">
+            <label htmlFor="given-name">3. Vad heter du?</label>
+          </h2>
           <input
             className="w-full rounded-2xl border-2 border-brand-100 bg-white px-4 py-3 text-lg outline-none focus:border-brand-400"
+            id="given-name"
+            name="given-name"
+            type="text"
             placeholder="Ditt förnamn"
             autoComplete="given-name"
             value={name}

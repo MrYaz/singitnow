@@ -54,9 +54,14 @@ export default function SettingsScreen() {
           <VoicePicker all={voices} value={settings.voices} cols={3} onChange={(v) => v.length && set({ voices: v })} />
         </section>
         <section className="space-y-3">
-          <h2 className="font-black">Ditt namn</h2>
+          <h2 className="font-black">
+            <label htmlFor="given-name">Ditt namn</label>
+          </h2>
           <input
             className="w-full rounded-2xl border-2 border-brand-100 bg-white px-4 py-2.5 outline-none focus:border-brand-400"
+            id="given-name"
+            name="given-name"
+            type="text"
             placeholder="Ditt förnamn"
             autoComplete="given-name"
             defaultValue={settings.name}
@@ -163,6 +168,13 @@ export default function SettingsScreen() {
             Radera allt på den här enheten
           </button>
           <p className="text-center text-xs text-gray-400">Allt sparas bara i din telefon. Inget laddas upp någonstans.</p>
+          <p className="text-center text-xs text-gray-400">
+            Ikoner från{' '}
+            <a className="underline" href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">
+              Twemoji
+            </a>
+            , CC BY 4.0.
+          </p>
         </section>
       </main>
       {/* Looking for new songs only reads the list, which the button shows; the box is for the long analysis. */}
