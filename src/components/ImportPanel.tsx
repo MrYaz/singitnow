@@ -10,6 +10,8 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
   const [url, setUrl] = useState(settings.driveUrl)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  /** Reading the song list takes seconds; downloading and analysing takes minutes. The box says which. */
+  const [phase, setPhase] = useState<'list' | 'analyse'>('list')
   const [pct, setPct] = useState(0)
   const [err, setErr] = useState('')
   const [failed, setFailed] = useState<{ name: string; url?: string }[]>([])
@@ -23,6 +25,8 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
     setFailed([])
     try {
       setMsg('Letar efter låtar…')
+      setPhase('list')
+      setPct(0)
       const files = await get()
       if (canWaitToFetch(files) && !force) {
         // From Drive only the list is read now; each song downloads the first time it is opened.
@@ -32,6 +36,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
         onDone?.()
         return
       }
+      setPhase('analyse')
       const songs = await importSources(
         files,
         (m, done, total) => {
@@ -78,7 +83,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
       {DRIVE_KEY && (
         <div className="card space-y-3">
           <p className="font-extrabold">Länk till körens Drive-mapp</p>
-          <p className="text-sm text-gray-600">Klistra in länken från välkomstbrevet. Nya låtar som körledaren lägger till hämtas automatiskt.</p>
+          <p className="text-sm text-gray-600">Klistra in länken från välkomstbrevet. Appen läser in låtlistan direkt, och varje låt laddas ner första gången du öppnar den. Nya låtar som körledaren lägger till dyker upp av sig själva.</p>
           <input
             className="w-full rounded-xl border-2 border-brand-100 px-3 py-2 outline-none focus:border-brand-400"
             placeholder="https://drive.google.com/drive/folders/…"
@@ -87,7 +92,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
             inputMode="url"
           />
           <button className="btn-primary w-full" disabled={busy || !url.trim()} onClick={fromDrive}>
-            Hämta låtarna
+            Hämta låtlistan
           </button>
         </div>
       )}
@@ -120,7 +125,7 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
           onChange={(e) => e.target.files?.length && run(async () => fromFileList(e.target.files!))}
         />
       </div>
-      {busy && <ImportProgress text={msg} share={pct} />}
+      {busy && <ImportProgress text={msg} share={pct} kind={phase} />}
       {!busy && msg && (
         <div className="card" aria-live="polite">
           <p className="font-bold">{msg}</p>
@@ -147,17 +152,38 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
 }
 
 /** Import progress over the page, so you see it has started without scrolling. Used on the start page and in the settings. */
-export function ImportProgress({ text, share, summary, onCancel }: { text: string; share: number; summary?: string; onCancel?: () => void }) {
+export function ImportProgress({
+  text,
+  share,
+  summary,
+  onCancel,
+  kind = 'fetch',
+}: {
+  text: string
+  share: number
+  summary?: string
+  onCancel?: () => void
+  /** list: only the song list is read. fetch: download, analysis and exact timing. analyse: analysis, with the exact timing left for later. */
+  kind?: 'list' | 'fetch' | 'analyse'
+}) {
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 px-4" role="dialog" aria-modal="true" aria-label="Hämtar låtarna">
       <div className="pop card w-full max-w-md space-y-2 shadow-xl" aria-live="polite">
         {summary && <p className="text-sm font-black text-brand-700">{summary}</p>}
         <p className="font-bold">{text}</p>
         <Bar value={share} />
-        <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma och synkar texten exakt. Det tar en stund per låt, längre på äldre telefoner och plattor.</p>
-        <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">
-          💡 Ha webbläsaren framme med appen öppen tills allt är klart. Byter du app eller flik, eller släcks skärmen, stannar nedladdningen. Appen håller skärmen tänd så länge.
-        </p>
+        {kind !== 'list' && (
+          <>
+            <p className="text-xs text-gray-500">
+              {kind === 'fetch'
+                ? 'Appen hämtar låten, lyssnar igenom varje stämma och synkar texten exakt. Det tar en stund per låt, längre på äldre telefoner och plattor.'
+                : 'Appen lyssnar igenom varje stämma för att hitta raderna. Den exakta synken görs sedan i bakgrunden.'}
+            </p>
+            <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">
+              💡 Ha webbläsaren framme med appen öppen tills allt är klart. Byter du app eller flik, eller släcks skärmen, stannar det. Appen håller skärmen tänd så länge.
+            </p>
+          </>
+        )}
         {onCancel && (
           <button className="btn-ghost w-full" onClick={onCancel}>
             Avbryt och fortsätt senare

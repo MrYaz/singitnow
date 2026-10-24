@@ -164,7 +164,8 @@ export default function SettingsScreen() {
           <p className="text-center text-xs text-gray-400">Allt sparas bara i din telefon. Inget laddas upp någonstans.</p>
         </section>
       </main>
-      {working && <ImportProgress text={working.text} share={working.share} />}
+      {/* Looking for new songs only reads the list, which the button shows; the box is for the long analysis. */}
+      {working?.which === 'all' && <ImportProgress text={working.text} share={working.share} kind="analyse" />}
     </>
   )
 }
