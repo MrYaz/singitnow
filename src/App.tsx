@@ -113,7 +113,7 @@ export default function App() {
         body = <Lesson key={`${stack.length}:${screen.title}`} title={screen.title} items={screen.items} level={screen.level} />
         break
       case 'rehearsal':
-        body = <Rehearsal songId={screen.songId} />
+        body = <Rehearsal songId={screen.songId} part={screen.part} then={screen.then} />
         break
       case 'tune':
         body = <Tune songId={screen.songId} />

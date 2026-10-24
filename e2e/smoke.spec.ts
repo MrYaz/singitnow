@@ -19,6 +19,16 @@ test('import, learn and rehearse', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Mina stämmor: Sopran + Sopran 1' })).toHaveText('S + S1 ▾')
   await expect(page.getByText('Hej Ella! 👋')).toBeVisible()
   await page.screenshot({ path: 'test-results/02-home.png' })
+
+  // Dagens pass starts in Stämrep with the part to learn looped, then goes on to the words.
+  await page.getByRole('button', { name: /Dagens pass/ }).click()
+  await expect(page.getByText('Dagens pass · steg 1 av 2')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Loopar del \d+/ })).toBeVisible({ timeout: 60_000 })
+  await page.screenshot({ path: 'test-results/02c-daily.png' })
+  await page.getByRole('button', { name: 'Vidare till textträning →' }).click()
+  await expect(page.getByRole('button', { name: 'Avsluta' })).toBeVisible()
+  await page.getByRole('button', { name: 'Avsluta' }).click()
+  await expect(page.getByText('Dagens pass')).toBeVisible()
   // The three song buttons fit on a narrow phone.
   await page.setViewportSize({ width: 340, height: 740 })
   const box = await page.getByRole('button', { name: 'Körrep' }).first().boundingBox()

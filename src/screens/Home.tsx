@@ -184,15 +184,15 @@ export default function Home() {
       items.push({ songId, voice, ex: reviewExercise(sections, Number(s), Number(l), row.card.reps, row.due % 997) })
       if (items.length >= 12) break
     }
-    if (items.length) nav.go({ name: 'lesson', title: 'Dagens pass', items })
-    else if (next) startNext()
-    else if (!songs.length && waiting[0]) void fetchNow(waiting[0].id, { name: 'song', songId: waiting[0].id })
+    // Like Sing It's own advice: first listen and sing along in Stämrep, then train the words.
+    const lesson: Screen | null = items.length ? { name: 'lesson', title: 'Dagens pass', items } : next ? lessonFor(next.song, next.voice, next.section, next.level) : null
+    if (lesson) {
+      const songId = next?.song.id ?? items[0].songId
+      const part = next ? next.section : Number(due!.find((r) => r.key.startsWith(items[0].songId + '|'))!.key.split('|')[2])
+      nav.go({ name: 'rehearsal', songId, part, then: lesson })
+    } else if (!songs.length && waiting[0]) void fetchNow(waiting[0].id, { name: 'song', songId: waiting[0].id })
   }
 
-  const startNext = () => {
-    if (!next) return
-    nav.go(lessonFor(next.song, next.voice, next.section, next.level))
-  }
 
   return (
     <main className={`px-4 pt-[max(env(safe-area-inset-top),16px)] ${refine ? 'pb-16' : 'pb-10'}`}>

@@ -22,7 +22,8 @@ export type Screen =
   | { name: 'song'; songId: string }
   | { name: 'lesson'; title: string; items: LessonItem[]; level?: LessonTarget }
   | { name: 'concert'; songId: string }
-  | { name: 'rehearsal'; songId: string }
+  /** `part` (a section of your voice) is looped from the start; `then` is where Dagens pass goes on to. */
+  | { name: 'rehearsal'; songId: string; part?: number; then?: Screen }
   | { name: 'tune'; songId: string }
   | { name: 'read'; songId: string }
 
