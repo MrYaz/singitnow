@@ -18,7 +18,8 @@ import ChoirRead from './screens/ChoirRead'
 export default function App() {
   const [stack, setStack] = useState<Screen[]>([{ name: 'home' }])
   const [settings, setSettings] = useState<Settings | null>(null)
-  const songCount = useLiveQuery(() => db.songs.count(), [])
+  // Songs only noted from Drive count too: they are downloaded when first opened.
+  const songCount = useLiveQuery(async () => (await db.songs.count()) + (await db.pending.count()), [])
 
   useEffect(() => {
     void (async () => {

@@ -9,7 +9,7 @@ test('import, learn and rehearse', async ({ page }) => {
   await page.goto('./')
   await expect(page.getByText('Lägg till körens låtar')).toBeVisible()
   await page.locator('input[webkitdirectory]').setInputFiles(DIR!)
-  await expect(page.getByText(/2 låtar inlästa/)).toBeVisible({ timeout: 1_200_000 })
+  await expect(page.getByText(/2 låtar hittade/)).toBeVisible({ timeout: 1_200_000 })
   await page.screenshot({ path: 'test-results/01-voice.png', fullPage: true })
   await page.getByRole('button', { name: 'Sopran', exact: true }).click()
   await page.getByRole('button', { name: /^✓?\s*Sopran 1/ }).click()

@@ -9,9 +9,14 @@ import { VoicePicker } from '../components/VoicePicker'
 
 export default function Setup() {
   const { settings, reload } = useSettings()
-  const songs = useLiveQuery(() => db.songs.toArray(), [])
+  // Downloaded songs and songs noted from Drive, which are downloaded when first opened.
+  const songs = useLiveQuery(async () => {
+    const got = await db.songs.toArray()
+    const waiting = (await db.pending.toArray()).filter((p) => !got.some((s) => s.id === p.id))
+    return [...got.map((s) => ({ voices: Object.keys(s.voices) })), ...waiting.map((p) => ({ voices: p.voices }))]
+  }, [])
   const [busy, setBusy] = useState(false)
-  const voices = sortVoices([...new Set((songs ?? []).flatMap((s) => Object.keys(s.voices)))])
+  const voices = sortVoices([...new Set((songs ?? []).flatMap((s) => s.voices))])
 
   const [picked, setPicked] = useState<string[]>(settings.voices)
   const [name, setName] = useState(settings.name)
@@ -53,7 +58,7 @@ export default function Setup() {
         </>
       ) : (
         <>
-          <p className="card font-bold text-good-600">✓ {songs.length} {songs.length === 1 ? 'låt' : 'låtar'} inlästa</p>
+          <p className="card font-bold text-good-600">✓ {songs.length} {songs.length === 1 ? 'låt' : 'låtar'} hittade</p>
           <h2 className="text-xl font-extrabold">2. Vilken stämma sjunger du?</h2>
           <p className="text-sm text-gray-600">Osäker? Välj den som känns mest bekväm. Du kan byta när som helst.</p>
           <VoicePicker all={voices} value={picked} onChange={setPicked} />

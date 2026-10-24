@@ -1,12 +1,13 @@
 import { db } from './db'
 import { folderTitle, groupSongs, type SongGroup } from './group'
-import { DriveError, type SourceFile } from './sources'
-import type { Song, StoredFile, VoiceTrack } from './types'
+import { DriveError, driveFile, type SourceFile } from './sources'
+import type { PendingSong, Song, StoredFile, VoiceTrack } from './types'
 import { readLyricsPdf } from './pdf/load'
 import { analyzeInWorker, decodeForAnalysis } from './audio/analyze'
 import { ANALYSIS_RATE } from './audio/activity'
 import { alignLyrics } from './audio/align'
 import { keepAwake } from './wakelock'
+import { holdRefine } from './refine'
 
 export type Progress = (msg: string, done: number, total: number) => void
 
@@ -50,31 +51,87 @@ async function songStatus(g: SongGroup) {
   return { prev, changedIds, needed }
 }
 
-/** Songs in the folder that are new or changed since last time, to ask before downloading them. */
-export async function songsToFetch(sources: SourceFile[]): Promise<{ name: string; isNew: boolean }[]> {
-  const out: { name: string; isNew: boolean }[] = []
-  for (const g of groupSongs(sources)) {
-    const { prev, needed } = await songStatus(g)
-    if (needed) out.push({ name: prev?.title ?? folderTitle(g.folder), isNew: !prev })
+/**
+ * Notes the songs in a Drive listing that are new or changed, without downloading anything.
+ * Each one is downloaded and analysed the first time it is opened (fetchSong), so a slow
+ * device spreads the work over several sittings. Returns the noted songs.
+ */
+export async function addSongs(sources: SourceFile[]): Promise<PendingSong[]> {
+  const groups = groupSongs(sources)
+  if (!groups.length) throw new Error('Hittade inga låtar. Varje låt behöver minst en Musik-fil och en stämfil.')
+  const out: PendingSong[] = []
+  for (const g of groups) {
+    const { prev, changedIds, needed } = await songStatus(g)
+    if (!needed) continue
+    const withLyrics = (v?: string) => g.files.some((f) => f.kind === 'pdf' && f.voice === v)
+    out.push({
+      id: g.id,
+      title: prev?.title ?? folderTitle(g.folder),
+      folder: g.folder,
+      order: g.order,
+      voices: [...new Set(g.files.filter((f) => f.kind === 'voice' && f.voice && withLyrics(f.voice)).map((f) => f.voice!))],
+      size: g.files.filter((f) => changedIds.has(f.file.id)).reduce((a, f) => a + f.file.size, 0),
+      update: !!prev,
+      files: g.files.map(({ file: f }) => ({ driveId: f.driveId!, path: f.path, name: f.name, size: f.size, modified: f.modified })),
+    })
   }
+  // The listing is the whole folder, so it replaces what was noted before.
+  await db.transaction('rw', db.pending, async () => {
+    await db.pending.clear()
+    await db.pending.bulkPut(out)
+  })
   return out
+}
+
+/** True when every file came from Drive, so the songs can be noted now and downloaded later. */
+export const canWaitToFetch = (sources: SourceFile[]) => sources.length > 0 && sources.every((s) => s.driveId)
+
+/** Downloads and analyses one noted song. Throws ImportError if Drive would not give the files. */
+export async function fetchSong(id: string, onProgress: Progress, signal?: AbortSignal): Promise<Song | undefined> {
+  const row = await db.pending.get(id)
+  if (!row) return db.songs.get(id)
+  await importSources(row.files.map((f) => driveFile(f)), onProgress, false, signal)
+  await db.pending.delete(id)
+  return db.songs.get(id)
+}
+
+/** Downloads and analyses every noted song, for those who want it all at once. Stops when `signal` aborts. */
+export async function fetchAllSongs(onProgress: Progress, signal?: AbortSignal): Promise<number> {
+  const rows = await db.pending.orderBy('order').toArray()
+  const failed: { name: string; url?: string }[] = []
+  const got: Song[] = []
+  for (let i = 0; i < rows.length; i++) {
+    try {
+      signal?.throwIfAborted()
+      const song = await fetchSong(rows[i].id, (msg, done, total) => onProgress(msg, i + (total ? done / total : 0), rows.length), signal)
+      if (song) got.push(song)
+    } catch (e) {
+      if (signal?.aborted) throw e
+      failed.push(...(e instanceof ImportError ? e.failed : [{ name: rows[i].title }]))
+    }
+  }
+  if (failed.length) throw new ImportError(got, failed)
+  return got.length
 }
 
 /**
  * Imports songs: stores the files, reads every PDF and finds each line in the audio.
  * Songs whose files did not change are skipped unless `force` is set.
  */
-export async function importSources(sources: SourceFile[], onProgress: Progress, force = false): Promise<Song[]> {
+export async function importSources(sources: SourceFile[], onProgress: Progress, force = false, signal?: AbortSignal): Promise<Song[]> {
   // The phone pauses the page if the screen turns off, so keep it on until the import is done.
   const release = keepAwake()
+  // The background sync waits, so the two do not fight over a slow device.
+  const resume = holdRefine()
   try {
-    return await importAll(sources, onProgress, force)
+    return await importAll(sources, onProgress, force, signal)
   } finally {
+    resume()
     release()
   }
 }
 
-async function importAll(sources: SourceFile[], onProgress: Progress, force: boolean): Promise<Song[]> {
+async function importAll(sources: SourceFile[], onProgress: Progress, force: boolean, signal?: AbortSignal): Promise<Song[]> {
   const groups = groupSongs(sources)
   if (!groups.length) throw new Error('Hittade inga låtar. Varje låt behöver minst en Musik-fil och en stämfil.')
   const imported: Song[] = []
@@ -94,6 +151,8 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
         const stored: StoredFile[] = []
         let n = 0
         for (const f of g.files) {
+          // Stopping keeps the files already downloaded, so going on later starts where it stopped.
+          signal?.throwIfAborted()
           stored.push(await storeFile(g, f, () => onProgress(`Hämtar ${name} (${++n}/${g.files.length})`, step, total)))
         }
         const musik = stored.find((s) => s.kind === 'musik')!
@@ -105,6 +164,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
         const voiceFiles = stored.filter((s) => s.kind === 'voice' && s.voice)
         let title = prev?.title ?? name
         for (let i = 0; i < voiceFiles.length; i++) {
+          signal?.throwIfAborted()
           const vf = voiceFiles[i]
           const pdf = stored.find((s) => s.kind === 'pdf' && s.voice === vf.voice)
           if (!pdf) continue
@@ -154,6 +214,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
         imported.push(song)
         onProgress(`${title} klar`, step + 1, total)
       } catch (e) {
+        if (signal?.aborted) throw e
         // One song failing should not stop the rest. It is fetched again next time, since it is not saved.
         console.warn('Could not import', name, e instanceof DriveError ? e.url : '', e)
         failed.push({ g, name, url: e instanceof DriveError ? e.url : undefined })
@@ -166,6 +227,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
   const again = failed.filter((f) => f.url)
   if (again.length) {
     for (let s = 30; s > 0; s--) {
+      signal?.throwIfAborted()
       onProgress(`Google Drive svarar inte just nu för ${songList(again.map((f) => f.name))}. Försöker igen om ${s} s…`, step, total)
       await new Promise((r) => setTimeout(r, 1000))
     }

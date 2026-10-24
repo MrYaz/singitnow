@@ -1,3 +1,5 @@
+import type { PendingFile } from './types'
+
 /** A file we can import, from the device or from Google Drive. */
 export interface SourceFile {
   id: string
@@ -6,6 +8,8 @@ export interface SourceFile {
   name: string
   size: number
   modified?: string
+  /** Set for Drive files, so they can be noted and downloaded later. */
+  driveId?: string
   load: () => Promise<Blob>
 }
 
@@ -125,6 +129,25 @@ async function listChildren(folderId: string, key: string): Promise<DriveItem[]>
   return out
 }
 
+/** A Drive file that downloads when it is loaded. */
+export function driveFile(f: PendingFile, key = DRIVE_KEY): SourceFile {
+  return {
+    id: `drive:${f.driveId}`,
+    driveId: f.driveId,
+    path: f.path,
+    name: f.name,
+    size: f.size,
+    modified: f.modified,
+    load: async () => {
+      if (!key) throw new Error('Appen saknar en Google API-nyckel.')
+      const url = `${API}/${f.driveId}?alt=media&key=${encodeURIComponent(key)}&supportsAllDrives=true`
+      const r = await driveFetch(url)
+      if (!r.ok) throw new DriveError(url, r.status, f.name)
+      return r.blob()
+    },
+  }
+}
+
 /** Lists audio and PDF files in a public Drive folder, three levels deep. */
 export async function listDriveFolder(folderUrl: string, key = DRIVE_KEY): Promise<SourceFile[]> {
   if (!key) throw new Error('Appen saknar en Google API-nyckel.')
@@ -136,19 +159,7 @@ export async function listDriveFolder(folderUrl: string, key = DRIVE_KEY): Promi
       if (it.mimeType === 'application/vnd.google-apps.folder') {
         if (depth < 3) await walk(it.id, [...path, it.name], depth + 1)
       } else if (/\.(mp3|m4a|wav|pdf)$/i.test(it.name)) {
-        files.push({
-          id: `drive:${it.id}`,
-          path,
-          name: it.name,
-          size: Number(it.size ?? 0),
-          modified: it.modifiedTime,
-          load: async () => {
-            const url = `${API}/${it.id}?alt=media&key=${encodeURIComponent(key)}&supportsAllDrives=true`
-            const r = await driveFetch(url)
-            if (!r.ok) throw new DriveError(url, r.status, it.name)
-            return r.blob()
-          },
-        })
+        files.push(driveFile({ driveId: it.id, path, name: it.name, size: Number(it.size ?? 0), modified: it.modifiedTime }, key))
       }
     }
   }

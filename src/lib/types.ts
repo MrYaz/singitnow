@@ -65,6 +65,30 @@ export interface VoiceTrack {
   analyzedAt: number
 }
 
+/** A Drive file noted for later, so a song can be downloaded the first time it is opened. */
+export interface PendingFile {
+  driveId: string
+  path: string[]
+  name: string
+  size: number
+  modified?: string
+}
+
+/** A song found in the choir's Drive folder that is not downloaded (or not updated) yet. */
+export interface PendingSong {
+  id: string
+  title: string
+  folder: string
+  order: number
+  /** Voices that have lyrics, so you can pick yours before anything is downloaded. */
+  voices: string[]
+  /** Bytes still to download. */
+  size: number
+  /** An older version is already downloaded. */
+  update: boolean
+  files: PendingFile[]
+}
+
 export interface Song {
   id: string
   title: string

@@ -5,14 +5,14 @@ import { doneFor, dueLines, getStreak, isDone, saveSettings, todayXP } from '../
 import { LEVELS, learnable, lessonFor, reviewExercise } from '../lib/exercises'
 import { pickVoice, shortVoice, sortVoices } from '../lib/names'
 import { VoicePicker, voiceLabel } from '../components/VoicePicker'
-import { ImportError, importSources, songsToFetch } from '../lib/importer'
-import type { SourceFile } from '../lib/sources'
+import { ImportError, addSongs, fetchAllSongs, fetchSong } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder, takeLinkedDrive } from '../lib/sources'
 import { onRefineStatus, refineInBackground } from '../lib/refine'
-import { useNav, type LessonItem } from '../nav'
+import { useNav, type LessonItem, type Screen } from '../nav'
 import { useSettings } from '../settings'
 import { Bar, Sheet } from '../components/ui'
-import type { Song } from '../lib/types'
+import { ImportProgress } from '../components/ImportPanel'
+import type { PendingSong, Song } from '../lib/types'
 
 let checkedDrive = false
 
@@ -24,6 +24,7 @@ export default function Home() {
   const { settings, reload } = useSettings()
   const mine = settings.voices
   const songs = useLiveQuery(() => db.songs.orderBy('order').toArray(), [])
+  const pending = useLiveQuery(() => db.pending.orderBy('order').toArray(), [])
   const xp = useLiveQuery(() => todayXP(), [])
   const streak = useLiveQuery(() => getStreak(), [])
   const mineKey = mine.join('|')
@@ -44,9 +45,19 @@ export default function Home() {
   const mineRef = useRef(mine)
   mineRef.current = mine
 
-  // Look for new songs in the choir's Drive folder once per app start, and ask before downloading them.
-  const [offer, setOffer] = useState<{ files: SourceFile[]; songs: { name: string; isNew: boolean }[] } | null>(null)
-  const [fetching, setFetching] = useState<{ msg: string; share: number } | null>(null)
+  // Look for new songs in the choir's Drive folder once per app start. Only the list is fetched;
+  // each song is downloaded the first time it is opened.
+  const [fetching, setFetching] = useState<{ msg: string; share: number; summary?: string } | null>(null)
+  const stopFetch = useRef<AbortController | null>(null)
+  const stopTally = useRef({ got: 0, total: 0 })
+  /** Stops at the next file or voice; what is already downloaded is kept for next time. */
+  const cancelFetch = () => {
+    stopFetch.current?.abort()
+    setFetching(null)
+    const { got, total } = stopTally.current
+    if (total) setSyncMsg(`Hämtat ${got} av ${total} låtar. Tryck på Hämta alla för att fortsätta, eller öppna en låt.`)
+  }
+  const [fetchErr, setFetchErr] = useState<{ text: string; failed: { name: string; url?: string }[] } | null>(null)
   const refineLater = () => {
     syncing.current = false
     void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
@@ -59,8 +70,10 @@ export default function Home() {
     void (async () => {
       try {
         const files = await listDriveFolder(settings.driveUrl)
-        const news = await songsToFetch(files)
-        if (news.length) return setOffer({ files, songs: news })
+        // Only songs not seen before are news; noted ones already have their card.
+        const seen = new Set((await db.pending.toArray()).map((p) => p.id))
+        const news = (await addSongs(files)).filter((x) => !x.update && !seen.has(x.id))
+        if (news.length) setSyncMsg(news.length === 1 ? `Ny låt i körens mapp: ${news[0].title}!` : `${news.length} nya låtar i körens mapp!`)
       } catch {
         /* offline or Drive unavailable: try again next start */
       }
@@ -68,21 +81,34 @@ export default function Home() {
     })()
   }, [settings.driveUrl])
 
-  const fetchOffer = async () => {
-    if (!offer) return
+  /** Downloads and analyses noted songs (one, or all), with progress over the page. */
+  const fetchNow = async (id: string | null, then?: Screen) => {
+    setFetchErr(null)
+    setSyncMsg('')
     setFetching({ msg: 'Hämtar…', share: 0 })
-    let n = 0
-    let err = ''
+    syncing.current = true
+    const stop = new AbortController()
+    stopFetch.current = stop
+    const tally = { got: 0, total: 0 }
+    stopTally.current = tally
     try {
-      n = (await importSources(offer.files, (msg, done, total) => setFetching({ msg, share: done / total }))).length
+      if (id) await fetchSong(id, (msg, done, n) => !stop.signal.aborted && setFetching({ msg, share: n ? done / n : 0 }), stop.signal)
+      else
+        await fetchAllSongs((msg, done, n) => {
+          tally.got = Math.floor(done)
+          tally.total = n
+          if (!stop.signal.aborted) setFetching({ msg, share: n ? done / n : 0, summary: `Hämtat ${tally.got} av ${n} låtar` })
+        }, stop.signal)
+      if (stop.signal.aborted) return
+      setFetching(null)
+      if (then) nav.go(then)
     } catch (e) {
-      n = e instanceof ImportError ? e.imported.length : 0
-      err = e instanceof Error ? e.message : String(e)
+      setFetching(null)
+      if (stop.signal.aborted) return
+      setFetchErr({ text: e instanceof Error ? e.message : String(e), failed: e instanceof ImportError ? e.failed.filter((f) => f.url) : [] })
+    } finally {
+      refineLater()
     }
-    setFetching(null)
-    setOffer(null)
-    setSyncMsg(err || (n ? `${n} ${n === 1 ? 'låt' : 'låtar'} hämtade från Drive!` : ''))
-    refineLater()
   }
 
   // Time the lines of your voices with the speech model, in the background.
@@ -91,8 +117,15 @@ export default function Home() {
     void refineInBackground((s) => pickVoice(s.voices, mineRef.current))
   }, [songs, mineKey])
 
-  if (!songs || !levels) return null
-  const allVoices = sortVoices([...new Set(songs.flatMap((s) => Object.keys(s.voices)))])
+  if (!songs || !levels || !pending) return null
+  const allVoices = sortVoices([...new Set([...songs.flatMap((s) => Object.keys(s.voices)), ...pending.flatMap((p) => p.voices)])])
+  // Downloaded songs and songs only noted from Drive, in the folder's order.
+  const list: { id: string; order: number; song?: Song; wait?: PendingSong }[] = [
+    ...songs.map((song) => ({ id: song.id, order: song.order, song, wait: pending.find((p) => p.id === song.id) })),
+    ...pending.filter((p) => !songs.some((x) => x.id === p.id)).map((wait) => ({ id: wait.id, order: wait.order, wait })),
+  ].sort((a, b) => a.order - b.order)
+  const waiting = pending.filter((p) => !songs.some((x) => x.id === p.id))
+  const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1e6))} MB`
   const goal = settings.dailyGoal
 
   const voiceOf = (s: Song) => pickVoice(s.voices, mine)
@@ -135,6 +168,7 @@ export default function Home() {
     }
     if (items.length) nav.go({ name: 'lesson', title: 'Dagens pass', items })
     else if (next) startNext()
+    else if (!songs.length && waiting[0]) void fetchNow(waiting[0].id, { name: 'song', songId: waiting[0].id })
   }
 
   const startNext = () => {
@@ -180,15 +214,50 @@ export default function Home() {
               ? `${due.length} rader att repetera, cirka ${Math.max(2, Math.round(Math.min(12, due.length) * 0.4))} min`
               : next
                 ? `${next.started ? 'Fortsätt' : 'Börja'}: ${next.song.title}, ${LEVELS[next.level].name.toLowerCase()}`
-                : 'Allt är repeterat. Snyggt jobbat!'}
+                : songs.length
+                  ? 'Allt är repeterat. Snyggt jobbat!'
+                  : waiting.length
+                    ? `Börja: ${waiting[0].title}`
+                    : 'Allt är repeterat. Snyggt jobbat!'}
           </p>
         </div>
       </button>
 
       {syncMsg && <p className="mt-3 rounded-2xl bg-good-100 p-3 text-sm font-bold text-good-600">{syncMsg}</p>}
       <h2 className="mt-7 mb-3 text-lg font-black">Låtar</h2>
+      {waiting.length > 1 && (
+        <div className="-mt-1 mb-3 flex items-center gap-2 text-xs text-gray-500">
+          <p className="flex-1">Låtarna hämtas första gången du öppnar dem. Du kan också hämta allt på en gång.</p>
+          <button className="btn-ghost shrink-0 px-3 py-1.5 text-xs" onClick={() => void fetchNow(null)}>
+            Hämta alla ({mb(waiting.reduce((a, p) => a + p.size, 0))})
+          </button>
+        </div>
+      )}
       <ul className="space-y-3">
-        {songs.map((s) => {
+        {list.map(({ id, song: s, wait }) => {
+          if (!s) {
+            // Not downloaded yet: the first tap downloads and analyses it, then opens what you chose.
+            const open = (then: Screen) => void fetchNow(id, then)
+            return (
+              <li key={id} className="card">
+                <button className="w-full text-left" onClick={() => open({ name: 'song', songId: id })}>
+                  <p className="text-lg font-extrabold">{wait!.title}</p>
+                  <p className="mt-1 text-xs font-bold text-gray-500">Hämtas när du öppnar den · {mb(wait!.size)}</p>
+                </button>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button className={songBtn} onClick={() => open({ name: 'rehearsal', songId: id })}>
+                    Stämrep
+                  </button>
+                  <button className={songBtn} onClick={() => open({ name: 'song', songId: id })}>
+                    Textträning
+                  </button>
+                  <button className={songBtn} onClick={() => open({ name: 'read', songId: id })}>
+                    Körrep
+                  </button>
+                </div>
+              </li>
+            )
+          }
           const p = progressOf(s)
           return (
             <li key={s.id} className="card">
@@ -208,6 +277,11 @@ export default function Home() {
                   <p className="text-xs text-gray-500">Ingen av dina stämmor finns i den här låten</p>
                 )}
               </button>
+              {wait && (
+                <button className="mt-2 w-full rounded-xl bg-brand-50 px-3 py-1.5 text-left text-xs font-bold text-brand-700" onClick={() => void fetchNow(s.id)}>
+                  Ny version i körens mapp · Tryck här för att hämta den ({mb(wait.size)})
+                </button>
+              )}
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <button className={songBtn} onClick={() => nav.go({ name: 'rehearsal', songId: s.id })}>
                   Stämrep
@@ -224,53 +298,23 @@ export default function Home() {
         })}
       </ul>
 
-      <Sheet
-        open={!!offer}
-        onClose={() => {
-          if (fetching) return
-          setOffer(null)
-          refineLater()
-        }}
-      >
-        {offer && (
-          <div className="space-y-3">
-            <p className="text-lg font-black">
-              {offer.songs.length === 1 ? 'Det har kommit nytt i körens mapp' : `${offer.songs.length} låtar är nya eller ändrade i körens mapp`}
-            </p>
-            <ul className="space-y-1">
-              {offer.songs.map((x) => (
-                <li key={x.name} className="flex items-center gap-2 font-bold">
-                  <span>🎵</span>
-                  <span className="flex-1">{x.name}</span>
-                  <span className="text-xs font-semibold text-gray-500">{x.isNew ? 'Ny' : 'Uppdaterad'}</span>
-                </li>
-              ))}
-            </ul>
-            {fetching ? (
-              <div className="space-y-2" aria-live="polite">
-                <p className="text-sm font-bold">{fetching.msg}</p>
-                <Bar value={fetching.share} />
-                <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">💡 Låt skärmen vara på tills allt är hämtat, annars stannar nedladdningen. Appen håller den tänd så länge, och när importen är klar släcks skärmen som vanligt igen.</p>
-              </div>
-            ) : (
-              <div className="flex gap-2 pt-1">
-                <button
-                  className="btn-ghost flex-1"
-                  onClick={() => {
-                    setOffer(null)
-                    refineLater()
-                  }}
-                >
-                  Inte nu
-                </button>
-                <button className="btn-primary flex-1" onClick={fetchOffer}>
-                  Hämta
-                </button>
-              </div>
-            )}
+      {fetching && <ImportProgress text={fetching.msg} share={fetching.share} summary={fetching.summary} onCancel={cancelFetch} />}
+      {fetchErr && (
+        <Sheet open onClose={() => setFetchErr(null)}>
+          <div className="space-y-2 text-sm">
+            <p className="font-semibold text-amber-900">{fetchErr.text}</p>
+            {fetchErr.failed.map((f) => (
+              // unsafe-url sends the app's address along, which the API key needs.
+              <a key={f.name} className="block text-xs font-bold underline" href={f.url} target="_blank" rel="noopener" referrerPolicy="unsafe-url">
+                Visa Googles svar för {f.name}
+              </a>
+            ))}
+            <button className="btn-primary mt-2 w-full" onClick={() => setFetchErr(null)}>
+              Okej
+            </button>
           </div>
-        )}
-      </Sheet>
+        </Sheet>
+      )}
 
       <Sheet open={voiceSheet} onClose={() => setVoiceSheet(false)}>
         <p className="mb-3 text-lg font-black">Mina stämmor</p>
