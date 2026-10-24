@@ -1,3 +1,4 @@
+import type { Beats } from './audio/beats'
 /** A piece of a lyric line. `harmony` = colour-marked in the PDF (stämsång). */
 export interface LineSeg {
   text: string
@@ -99,4 +100,6 @@ export interface Song {
   musikFileId?: string
   voices: Record<string, VoiceTrack>
   addedAt: number
+  /** Tempo, beats and bars, found in the Musik track. */
+  beats?: Beats | null
 }

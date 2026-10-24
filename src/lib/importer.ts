@@ -3,7 +3,7 @@ import { folderTitle, groupSongs, type SongGroup } from './group'
 import { DriveError, driveFile, type SourceFile } from './sources'
 import type { PendingSong, Song, StoredFile, VoiceTrack } from './types'
 import { readLyricsPdf } from './pdf/load'
-import { analyzeInWorker, decodeForAnalysis } from './audio/analyze'
+import { analyzeInWorker, beatsInWorker, decodeForAnalysis } from './audio/analyze'
 import { ANALYSIS_RATE } from './audio/activity'
 import { alignLyrics } from './audio/align'
 import { keepAwake } from './wakelock'
@@ -237,6 +237,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
         const alla = stored.find((s) => s.kind === 'alla')
         onProgress(`Lyssnar på ${name}`, step + 0.1, total)
         const music = await decodeForAnalysis(musik.blob)
+        const beats = prev?.musikFileId === musik.id && prev.beats !== undefined && !changedIds.has(musik.id) ? prev.beats : await beatsInWorker(music.pcm).catch(() => null)
         // Rebuilt from the current files only, so voices removed from the folder disappear.
         const voices: Record<string, VoiceTrack> = {}
         const voiceFiles = stored.filter((s) => s.kind === 'voice' && s.voice)
@@ -286,6 +287,7 @@ async function importAll(sources: SourceFile[], onProgress: Progress, force: boo
           duration: music.duration,
           allaFileId: alla?.id,
           musikFileId: musik.id,
+          beats,
           voices,
           addedAt: prev?.addedAt ?? Date.now(),
           v: ANALYSIS_VERSION,
