@@ -8,6 +8,7 @@ import { refineVoice } from '../lib/refine'
 import { withAllVoices } from '../lib/merge'
 import { LineText, OthersText, TopBar, fmt, othersVoices } from '../components/ui'
 import type { Line } from '../lib/types'
+import { useNav, type Screen } from '../nav'
 
 interface Track {
   id: string
@@ -18,7 +19,8 @@ interface Track {
 
 type Loop = { from: number; to: number; label: string } | null
 
-export default function Rehearsal({ songId }: { songId: string }) {
+export default function Rehearsal({ songId, part, then }: { songId: string; part?: number; then?: Screen }) {
+  const nav = useNav()
   const { settings } = useSettings()
   const song = useLiveQuery(() => db.songs.get(songId), [songId])
   const mixer = useRef(new Mixer()).current
@@ -60,6 +62,22 @@ export default function Rehearsal({ songId }: { songId: string }) {
       mixer.stop()
     }
   }, [tracks, own?.id, mixer])
+
+  // Dagens pass opens on the part to learn, looped and in view, ready to play.
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current || !ready || !song || part == null || !own?.voice) return
+    started.current = true
+    const ownSecs = song.voices[own.voice]?.sections
+    const merged = withAllVoices(song, own.voice)
+    const mi = ownSecs?.[part] ? merged.findIndex((x) => x.lines === ownSecs[part].lines) : -1
+    if (mi < 0) return
+    const st = merged[mi].start ?? merged[mi].pdfStart ?? 0
+    const en = merged[mi].end ?? st + 10
+    setLoop({ from: Math.max(0, st - 0.8), to: en + 0.6, label: `Del ${mi + 1}` })
+    mixer.seek(Math.max(0, st - 0.8))
+    requestAnimationFrame(() => document.getElementById(`del-${mi}`)?.scrollIntoView({ block: 'center' }))
+  }, [ready, song, part, own?.voice, mixer])
 
   useEffect(() => {
     let raf = 0
@@ -149,6 +167,17 @@ export default function Rehearsal({ songId }: { songId: string }) {
       />
       <main className="flex-1 px-4 pb-64">
         {err && <p className="rounded-2xl bg-warm-100 p-3 text-sm font-semibold">{err}</p>}
+        {then && (
+          <div className="mb-3 rounded-2xl bg-brand-600 p-4 text-white">
+            <p className="text-xs font-black tracking-wide uppercase opacity-80">Dagens pass · steg 1 av 2</p>
+            <p className="mt-1 font-bold">
+              {loop ? `Lyssna på ${loop.label.toLowerCase()} och sjung med. Den loopas tills du går vidare.` : 'Lyssna på din stämma och sjung med.'}
+            </p>
+            <button className="mt-3 w-full rounded-xl bg-white py-2.5 font-black text-brand-700" onClick={() => nav.replace(then)}>
+              Vidare till textträning →
+            </button>
+          </div>
+        )}
         {song.voices[lyricVoice] && song.voices[lyricVoice].timing !== 'speech' && (
           <button
             className="mb-3 w-full rounded-2xl bg-brand-50 p-3 text-left text-sm"
@@ -178,7 +207,7 @@ export default function Rehearsal({ songId }: { songId: string }) {
             const lp = loop?.label.match(/^(\d+):(\d+)$/)
             const loopedLine = lp && Number(lp[1]) === si && s.lines[Number(lp[2])] ? Number(lp[2]) : null
             return (
-              <section key={si} className={`card transition ${inSec && playing ? 'border-brand-400' : ''}`}>
+              <section key={si} id={`del-${si}`} className={`card transition ${inSec && playing ? 'border-brand-400' : ''}`}>
                 <div className="mb-2 flex items-center gap-2">
                   <button className="text-xs font-black tracking-wide text-brand-600 uppercase" onClick={() => loopIt(st - 0.8, en + 0.6, `Del ${si + 1}`)}>
                     🔁 Del {si + 1} · {fmt(st).replace(/\.\d$/, '')}
