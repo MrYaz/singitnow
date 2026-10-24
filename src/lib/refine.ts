@@ -19,7 +19,7 @@ function spansFromActivity(act: number[]): [number, number][] {
  * Times every line of one voice with the speech model, which is far more exact than the
  * pause-based first guess. Takes about half a minute per voice on a laptop.
  */
-export async function refineVoice(song: Song, voice: string, onProgress?: (share: number) => void): Promise<void> {
+export async function refineVoice(song: Song, voice: string, onProgress?: (share: number, loading?: number) => void): Promise<void> {
   const track = song.voices[voice]
   const file = await db.files.get(track.audioFileId)
   if (!file) throw new Error('Ljudfilen saknas')

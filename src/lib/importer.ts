@@ -98,6 +98,8 @@ export async function fetchSong(id: string, onProgress: Progress, signal?: Abort
   // Downloading and the first analysis are the smaller part; the speech model takes most of the time.
   const DL = 0.35
   const resume = holdRefine()
+  // One screen lock for the whole job: the import lets go of its own when the download is done.
+  const release = keepAwake()
   try {
     await importSources(row.files.map((f) => driveFile(f)), (msg, done, total) => onProgress(msg, DL * (total ? done / total : 0), 1), false, signal)
     await db.pending.delete(id)
@@ -107,10 +109,20 @@ export async function fetchSong(id: string, onProgress: Progress, signal?: Abort
     for (let i = 0; i < voices.length; i++) {
       signal?.throwIfAborted()
       const label = `Finsynkar texten för ${voices[i]} (${i + 1}/${voices.length})`
-      onProgress(label, DL + ((1 - DL) * i) / voices.length, 1)
+      onProgress(`${label}…`, DL + ((1 - DL) * i) / voices.length, 1)
       try {
         const song = (await db.songs.get(id))!
-        await refineVoice(song, voices[i], (share) => onProgress(label, DL + ((1 - DL) * (i + share)) / voices.length, 1))
+        await refineVoice(song, voices[i], (share, loading) =>
+          onProgress(
+            loading === undefined
+              ? `${label}, ${Math.round(share * 100)} %`
+              : loading > 0
+                ? `${label}: laddar ner talmodellen, bara första gången (${Math.round(loading * 100)} %)`
+                : `${label}: startar talmodellen…`,
+            DL + ((1 - DL) * (i + share)) / voices.length,
+            1,
+          ),
+        )
       } catch (e) {
         // The rough timing still works; the background sync tries again later.
         console.warn('Could not refine', id, voices[i], e)
@@ -118,6 +130,7 @@ export async function fetchSong(id: string, onProgress: Progress, signal?: Abort
     }
     return db.songs.get(id)
   } finally {
+    release()
     resume()
   }
 }

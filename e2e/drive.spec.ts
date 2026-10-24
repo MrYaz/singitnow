@@ -64,6 +64,20 @@ async function setUp(page: Page) {
 
 test('lists the songs first and fetches each one when it is opened', async ({ page }) => {
   const songs = readdirSync(DIR!).sort()
+  // Count held screen locks, to check the screen stays on through the whole job.
+  await page.addInitScript(() => {
+    const w = window as unknown as { locks: number }
+    w.locks = 0
+    Object.defineProperty(navigator, 'wakeLock', {
+      value: {
+        request: async () => {
+          w.locks++
+          const s = { released: false, release: async () => (s.released ? undefined : ((s.released = true), w.locks--)) }
+          return s
+        },
+      },
+    })
+  })
   await serve(page, songs.slice(0, 1))
   // A shared link reads the folder by itself. Only the list is fetched, so this is quick.
   await page.goto('./?drive=ROOTFOLDER12345678901')
@@ -79,9 +93,13 @@ test('lists the songs first and fetches each one when it is opened', async ({ pa
   await expect(page.getByText('Ha webbläsaren framme')).toBeVisible()
   // The speech model times the lines as part of fetching.
   await expect(page.getByText(/Finsynkar texten för Alt 2 \(1\//)).toBeVisible({ timeout: 300_000 })
+  expect(await page.evaluate(() => (window as unknown as { locks: number }).locks)).toBeGreaterThan(0)
+  await expect(page.getByText(/Finsynkar texten för Alt 2 \(1\/\d\), \d+ %/)).toBeVisible({ timeout: 300_000 })
   await expect(page.getByRole('heading', { name: 'Körrep' })).toBeVisible({ timeout: 600_000 })
+  // Körrep keeps the screen on by itself; back home every lock is let go.
   await page.goBack()
   await expect(page.getByText(/Hämtas när du öppnar den/)).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => (window as unknown as { locks: number }).locks)).toBe(0)
 
   // A new song turns up in the folder: it is listed on the next start, nothing is downloaded.
   await page.unrouteAll()
