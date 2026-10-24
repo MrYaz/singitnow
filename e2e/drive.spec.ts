@@ -55,34 +55,41 @@ async function serve(page: Page, songFolders: string[], refuse = 0) {
   })
 }
 
-test('asks before fetching new songs from Drive', async ({ page }) => {
-  const songs = readdirSync(DIR!).sort()
-  await serve(page, songs.slice(0, 1))
-  // A shared link starts the import by itself.
-  await page.goto('./?drive=ROOTFOLDER12345678901')
-  await expect(page.getByText('✓ 1 låt inlästa')).toBeVisible({ timeout: 600_000 })
+async function setUp(page: Page) {
   await page.getByRole('button', { name: 'Alt 2', exact: true }).click()
   await page.getByPlaceholder('Ditt förnamn').fill('Ella')
   await page.getByRole('button', { name: 'Kör igång' }).click()
   await expect(page.getByText('Dagens pass')).toBeVisible()
+}
 
-  // A new song turns up in the folder: the app asks on the next start.
+test('lists the songs first and fetches each one when it is opened', async ({ page }) => {
+  const songs = readdirSync(DIR!).sort()
+  await serve(page, songs.slice(0, 1))
+  // A shared link reads the folder by itself. Only the list is fetched, so this is quick.
+  await page.goto('./?drive=ROOTFOLDER12345678901')
+  await expect(page.getByText('✓ 1 låt hittade')).toBeVisible({ timeout: 30_000 })
+  await setUp(page)
+  await expect(page.getByText(/Hämtas när du öppnar den · \d+ MB/)).toBeVisible()
+  await page.screenshot({ path: 'test-results/drive-waiting.png' })
+
+  // Opening it downloads and analyses it, then shows what you chose.
+  await page.getByRole('button', { name: 'Körrep' }).first().click()
+  await expect(page.getByText('Ha webbläsaren framme')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Körrep' })).toBeVisible({ timeout: 600_000 })
+  await page.goBack()
+  await expect(page.getByText(/Hämtas när du öppnar den/)).toHaveCount(0)
+
+  // A new song turns up in the folder: it is listed on the next start, nothing is downloaded.
   await page.unrouteAll()
   await serve(page, songs)
   await page.reload()
-  await expect(page.getByText('Det har kommit nytt i körens mapp')).toBeVisible()
-  await expect(page.getByText('Ny', { exact: true })).toBeVisible()
-  await page.screenshot({ path: 'test-results/drive-offer.png' })
-  await page.getByRole('button', { name: 'Hämta' }).click()
-  await expect(page.getByText(/1 låt hämtade från Drive!/)).toBeVisible({ timeout: 600_000 })
+  await expect(page.getByText(/Ny låt i körens mapp: /)).toBeVisible()
+  await expect(page.getByText(/Hämtas när du öppnar den/)).toHaveCount(1)
+  await page.getByRole('button', { name: 'Stämrep' }).nth(1).click()
+  await expect(page.getByRole('button', { name: 'Dölj text' })).toBeVisible({ timeout: 600_000 })
+  await page.goBack()
 
-  // Nothing new: no question.
-  await page.reload()
-  await expect(page.getByText('Dagens pass')).toBeVisible()
-  await page.waitForTimeout(1500)
-  await expect(page.getByText('Det har kommit nytt i körens mapp')).toHaveCount(0)
-
-  // Looking again from the settings: progress shows in the button.
+  // Looking again from the settings: nothing new.
   await page.getByRole('button', { name: 'Inställningar' }).click()
   await page.getByRole('button', { name: 'Leta efter nya låtar i Drive' }).click()
   await expect(page.getByText('Inga nya låtar.')).toBeVisible()
@@ -95,6 +102,24 @@ test('a song Google turns away is tried again', async ({ page }) => {
   // Four refusals: the first file fails all its retries, so the song waits and is tried again.
   await serve(page, songs.slice(0, 1), 4)
   await page.goto('./?drive=ROOTFOLDER12345678901')
+  await expect(page.getByText('✓ 1 låt hittade')).toBeVisible({ timeout: 30_000 })
+  await setUp(page)
+  await page.getByRole('button', { name: 'Körrep' }).first().click()
   await expect(page.getByText(/svarar inte just nu för .*Försöker igen om/)).toBeVisible({ timeout: 120_000 })
-  await expect(page.getByText('✓ 1 låt inlästa')).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByRole('heading', { name: 'Körrep' })).toBeVisible({ timeout: 180_000 })
+})
+
+test('fetching all songs can be stopped and continued later', async ({ page }) => {
+  const songs = readdirSync(DIR!).sort()
+  await serve(page, songs)
+  await page.goto('./?drive=ROOTFOLDER12345678901')
+  await expect(page.getByText(`✓ ${songs.length} låtar hittade`)).toBeVisible({ timeout: 30_000 })
+  await setUp(page)
+  await page.getByRole('button', { name: /Hämta alla/ }).click()
+  await expect(page.getByText(`Hämtat 0 av ${songs.length} låtar`)).toBeVisible()
+  await expect(page.getByText(`Hämtat 1 av ${songs.length} låtar`)).toBeVisible({ timeout: 600_000 })
+  await page.screenshot({ path: 'test-results/drive-all.png' })
+  await page.getByRole('button', { name: 'Avbryt och fortsätt senare' }).click()
+  await expect(page.getByText(`Hämtat 1 av ${songs.length} låtar. Tryck på Hämta alla`)).toBeVisible()
+  await expect(page.getByText(/Hämtas när du öppnar den/)).toHaveCount(songs.length - 1)
 })

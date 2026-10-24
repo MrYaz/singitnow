@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ImportError, importSources } from '../lib/importer'
+import { ImportError, addSongs, canWaitToFetch, importSources } from '../lib/importer'
 import { DRIVE_KEY, cleanDriveUrl, fromFileList, driveFolderId, listDriveFolder, takeLinkedDrive, type SourceFile } from '../lib/sources'
 import { saveSettings } from '../lib/learn'
 import { useSettings } from '../settings'
@@ -24,6 +24,14 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
     try {
       setMsg('Letar efter låtar…')
       const files = await get()
+      if (canWaitToFetch(files) && !force) {
+        // From Drive only the list is read now; each song downloads the first time it is opened.
+        const noted = await addSongs(files)
+        setMsg(noted.length ? `Klart! ${noted.length} ${noted.length === 1 ? 'låt' : 'låtar'} hittade. Varje låt hämtas första gången du öppnar den.` : 'Inga nya låtar sedan sist.')
+        setPct(1)
+        onDone?.()
+        return
+      }
       const songs = await importSources(
         files,
         (m, done, total) => {
@@ -139,16 +147,22 @@ export function ImportPanel({ onDone, onBusy }: { onDone?: () => void; onBusy?: 
 }
 
 /** Import progress over the page, so you see it has started without scrolling. Used on the start page and in the settings. */
-export function ImportProgress({ text, share }: { text: string; share: number }) {
+export function ImportProgress({ text, share, summary, onCancel }: { text: string; share: number; summary?: string; onCancel?: () => void }) {
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 px-4" role="dialog" aria-modal="true" aria-label="Hämtar låtarna">
       <div className="pop card w-full max-w-md space-y-2 shadow-xl" aria-live="polite">
+        {summary && <p className="text-sm font-black text-brand-700">{summary}</p>}
         <p className="font-bold">{text}</p>
         <Bar value={share} />
         <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma för att hitta raderna. Det tar en liten stund per låt.</p>
         <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">
-          💡 Låt skärmen vara på tills allt är hämtat, annars stannar nedladdningen. Appen håller den tänd så länge, och när importen är klar släcks skärmen som vanligt igen.
+          💡 Ha webbläsaren framme med appen öppen tills allt är klart. Byter du app eller flik, eller släcks skärmen, stannar nedladdningen. Appen håller skärmen tänd så länge.
         </p>
+        {onCancel && (
+          <button className="btn-ghost w-full" onClick={onCancel}>
+            Avbryt och fortsätt senare
+          </button>
+        )}
       </div>
     </div>
   )

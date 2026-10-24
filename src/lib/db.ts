@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type { Card } from 'ts-fsrs'
-import type { Song, StoredFile } from './types'
+import type { PendingSong, Song, StoredFile } from './types'
 
 export interface CardRow {
   /** songId|voice|section|line */
@@ -33,6 +33,7 @@ class SingItDB extends Dexie {
   cards!: Table<CardRow, string>
   progress!: Table<SectionProgress, string>
   kv!: Table<KV, string>
+  pending!: Table<PendingSong, string>
 
   constructor() {
     super('singitnow')
@@ -43,6 +44,8 @@ class SingItDB extends Dexie {
       progress: 'key, songId, voice',
       kv: 'key',
     })
+    // Songs listed from Drive but not downloaded yet.
+    this.version(2).stores({ pending: 'id, order' })
   }
 }
 

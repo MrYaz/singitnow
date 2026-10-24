@@ -57,6 +57,20 @@ export function needsRefine(songs: Song[], pick: (s: Song) => string | null): { 
 
 // ---- Background queue ----------------------------------------------------
 
+let holds = 0
+/** Pauses the queue between voices while something heavier runs (an import). Call the result to let it go on. */
+export function holdRefine(): () => void {
+  holds++
+  let done = false
+  return () => {
+    if (!done) holds--
+    done = true
+  }
+}
+const whileHeld = async () => {
+  while (holds > 0) await new Promise((r) => setTimeout(r, 1000))
+}
+
 type Status = { text: string; share: number } | null
 let status: Status = null
 let running = false
@@ -80,6 +94,7 @@ export async function refineInBackground(pick: (s: Song) => string | null): Prom
     const failed = new Set<string>()
     let done = 0
     for (;;) {
+      await whileHeld()
       const songs = await db.songs.orderBy('order').toArray()
       const left = needsRefine(songs, pick).filter((x) => !failed.has(`${x.song.id}|${x.voice}`))
       const next = left[0]

@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
 import { saveSettings } from '../lib/learn'
 import { sortVoices } from '../lib/names'
-import { importSources } from '../lib/importer'
+import { addSongs, importSources } from '../lib/importer'
 import { DRIVE_KEY, listDriveFolder, shareLink } from '../lib/sources'
 import { useNav } from '../nav'
 import { useSettings } from '../settings'
@@ -19,7 +19,8 @@ export default function SettingsScreen() {
   /** A running import, shown in its own button, which is disabled meanwhile. */
   const [working, setWorking] = useState<{ which: 'drive' | 'all'; text: string; share: number } | null>(null)
   const progress = (which: 'drive' | 'all') => (text: string, done = 0, total = 1) => setWorking({ which, text, share: total ? done / total : 0 })
-  const voices = sortVoices([...new Set((songs ?? []).flatMap((s) => Object.keys(s.voices)))])
+  const pending = useLiveQuery(() => db.pending.toArray(), [])
+  const voices = sortVoices([...new Set([...(songs ?? []).flatMap((s) => Object.keys(s.voices)), ...(pending ?? []).flatMap((p) => p.voices)])])
   const set = async (p: Parameters<typeof saveSettings>[0]) => {
     await saveSettings(p)
     await reload()
@@ -95,8 +96,8 @@ export default function SettingsScreen() {
                 setMsg('')
                 progress('drive')('Letar efter nya låtar…')
                 try {
-                  const n = await importSources(await listDriveFolder(settings.driveUrl), progress('drive'))
-                  setMsg(n.length ? `${n.length} ${n.length === 1 ? 'låt' : 'låtar'} uppdaterade.` : 'Inga nya låtar.')
+                  const n = await addSongs(await listDriveFolder(settings.driveUrl))
+                  setMsg(n.length ? `${n.length} ${n.length === 1 ? 'låt är ny eller ändrad' : 'låtar är nya eller ändrade'}. De hämtas när du öppnar dem på startsidan.` : 'Inga nya låtar.')
                 } catch (e) {
                   setMsg(e instanceof Error ? e.message : String(e))
                 } finally {
