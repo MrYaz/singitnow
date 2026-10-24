@@ -1,4 +1,5 @@
 import type { Section } from '../types'
+import { splitLines } from './align'
 
 /**
  * Lyric timing with a small speech model: the model gives, every 40 ms, how likely each
@@ -97,9 +98,19 @@ export function forceAlign(lp: Float32Array, frames: number, vocabSize: number, 
   return { first, last }
 }
 
+/** Sounds rather than words ("Oh…", "Ah, ah-ah", "Mm", "La la"). */
+const VOCALISE = /^(o+h*|wo+h?|a+h*|u+h*|e+h|h?m+|wh?oa+h?|(la)+|(na)+|(da)+|doo+|ha)$/
+
+/** A line with only sounds. The speech model does not know them well, so the pauses in the voice time them better. */
+export function isVocalise(text: string): boolean {
+  const w = words(text)
+  return w.length > 0 && w.every((x) => VOCALISE.test(x))
+}
+
 /**
  * Sets line (and section) times from the speech model's output. Lines without any
- * recognisable word keep the times they had.
+ * recognisable word keep the times they had. Parts with only sounds such as "Oh…" are
+ * placed at the pauses in the voice between the words around them.
  */
 export function applyCtc(sections: Section[], lp: Float32Array, frames: number, vocabSize: number, v: Vocab, spans: [number, number][] = []): Section[] {
   const toks: number[] = []
@@ -129,6 +140,8 @@ export function applyCtc(sections: Section[], lp: Float32Array, frames: number, 
   const spanEnd = (t: number) => spans.find((sp) => sp[0] - 0.05 <= t && t < sp[1])?.[1]
   const flat: { si: number; li: number }[] = []
   out.forEach((s, si) => s.lines.forEach((_, li) => flat.push({ si, li })))
+  /** How far each line's last sung word reaches, before it is cut at the next line. */
+  const reach: (number | undefined)[] = []
   flat.forEach(({ si, li }, k) => {
     const rg = range.get(`${si}:${li}`)
     if (!rg) return
@@ -136,9 +149,40 @@ export function applyCtc(sections: Section[], lp: Float32Array, frames: number, 
     line.start = r2(Math.max(0, rg[0] * CTC_FRAME - LAG))
     const lastHeard = rg[1] * CTC_FRAME
     let end = Math.max(lastHeard + 0.4, spanEnd(lastHeard) ?? 0)
+    reach[k] = end
     const next = flat[k + 1] && range.get(`${flat[k + 1].si}:${flat[k + 1].li}`)
     if (next) end = Math.min(end, next[0] * CTC_FRAME - LAG)
     line.end = r2(Math.max(end, line.start + 0.3))
+  })
+  // A part with only sounds ("Oh…", "Ah, ah") is placed at the pauses in the voice between the words
+  // before and after it, since the model hardly knows such sounds. The model still took part above,
+  // so that the words around the part do not drift into it.
+  out.forEach((s, si) => {
+    if (!s.lines.length || !s.lines.every((l) => isVocalise(l.text))) return
+    const k = flat.findIndex((x) => x.si === si)
+    const e = k + s.lines.length - 1
+    const prev = k > 0 ? out[flat[k - 1].si].lines[flat[k - 1].li] : null
+    const next = e + 1 < flat.length ? out[flat[e + 1].si].lines[flat[e + 1].li] : null
+    // Not long before the time in the PDF either, like the first timing.
+    const lo = Math.max(k > 0 ? (reach[k - 1] ?? prev?.end ?? 0) : 0, s.pdfStart != null ? s.pdfStart - 6 : 0)
+    const hi = next?.start != null ? next.start - 0.05 : Infinity
+    const r = splitLines(spans, lo, hi, s.lines)
+    if (r)
+      s.lines.forEach((l, i) => {
+        l.start = r2(r.bounds[i][0])
+        l.end = r2(r.bounds[i][1])
+      })
+    else {
+      // Keep the first timing from the pauses.
+      const orig = sections[si].lines
+      if (orig.some((l) => l.start == null)) return
+      s.lines.forEach((l, i) => {
+        l.start = orig[i].start
+        l.end = orig[i].end
+      })
+    }
+    if (prev?.end != null && reach[k - 1] != null) prev.end = r2(Math.max(prev.end, Math.min(reach[k - 1]!, s.lines[0].start! - 0.05)))
+    if (prev?.end != null && prev.end > s.lines[0].start!) prev.end = r2(Math.max(prev.start ?? 0, s.lines[0].start! - 0.05))
   })
   for (const s of out) {
     if (!s.lines.length) continue

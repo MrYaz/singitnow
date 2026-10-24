@@ -96,9 +96,13 @@ export function parseLyrics(pages: PdfPage[]): ParsedLyrics {
   rows.sort((a, b) => b.y - a.y)
   for (const r of rows) r.words.sort((a, b) => a.x0 - b.x0)
 
+  /** A line that says what the music does, not what is sung. */
+  const STAGE = /^\(?(mellanspel|förspel|efterspel|intro|outro|instrumental|instrumentalt)\)?[.…]*$/i
+
   let title = ''
   const sections: Section[] = []
   let cur: Section | null = null
+  let stage: string | null = null
   const newSection = (start: number | null, end: number | null): Section => {
     const s: Section = { pdfStart: start, pdfEnd: end, rest: false, note: null, others: [], lines: [] }
     sections.push(s)
@@ -116,8 +120,11 @@ export function parseLyrics(pages: PdfPage[]): ParsedLyrics {
       title = joinWords(row.words)
       continue
     }
-    if (stamps) cur = newSection(toSeconds(stamps[0]), stamps[1] ? toSeconds(stamps[1]) : null)
-    else if (ts.length && !cur) cur = newSection(null, null)
+    if (stamps) {
+      cur = newSection(toSeconds(stamps[0]), stamps[1] ? toSeconds(stamps[1]) : null)
+      if (stage) cur.note = stage
+      stage = null
+    } else if (ts.length && !cur) cur = newSection(null, null)
     // A note written in the timestamp column (e.g. "*Alla nynnar*") belongs to the section.
     if (!cur) cur = newSection(null, null)
 
@@ -126,7 +133,10 @@ export function parseLyrics(pages: PdfPage[]): ParsedLyrics {
       const text = joinWords(ownWords)
       if (/^\*?\s*tyst\s*\*?$/i.test(text)) cur.rest = true
       else if (/^\*.*\*$/.test(text)) cur.note = text.replace(/^\*|\*$/g, '').trim()
-      else if (/^[\p{L} ]+:$/u.test(text)) {
+      else if (STAGE.test(text)) {
+        // "mellanspel" after a part is not sung: it is shown as a note on the part that follows.
+        stage = text
+      } else if (/^[\p{L} ]+:$/u.test(text)) {
         /* a label such as "Sop:" */
       } else {
         const segs = toSegs(ownWords)
@@ -144,6 +154,7 @@ export function parseLyrics(pages: PdfPage[]): ParsedLyrics {
       if (t && !/^[\p{L} ]+:$/u.test(t)) cur.others.push(t.replace(/^\*|\*$/g, ''))
     }
   }
+  if (stage && cur && !cur.note) cur.note = stage
   // Drop empty sections that only carried a timestamp with nothing after it.
   return { title, sections: sections.filter((s) => s.lines.length || s.rest || s.note || s.others.length) }
 }

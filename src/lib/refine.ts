@@ -1,7 +1,9 @@
 import { db } from './db'
 import type { Song } from './types'
 import { decodeForAnalysis, loadTokens, runSpeechModel } from './audio/analyze'
-import { applyCtc, makeVocab } from './audio/ctc'
+import { applyCtc, isVocalise, makeVocab } from './audio/ctc'
+import { alignLyrics } from './audio/align'
+import { readLyricsPdf } from './pdf/load'
 
 /** Sung spans from the stored 2-per-second activity, for tracks imported before spans were saved. */
 function spansFromActivity(act: number[]): [number, number][] {
@@ -35,6 +37,44 @@ export async function refineVoice(song: Song, voice: string, onProgress?: (share
     t.sections = sections
     t.timing = 'speech'
   })
+}
+
+/** Bump when lyrics reading or fine-sync changes in a way that needs songs already fetched to be redone. */
+export const TIMING_VERSION = 2
+
+/**
+ * Brings songs fetched with an older version up to date without downloading anything: reads the
+ * stored PDF again and redoes the timing of the voices it changes, or that have parts with only
+ * sounds ("Oh…"), which the fine-sync now times differently. The background queue then fine-syncs them again.
+ */
+export async function upgradeTiming(): Promise<void> {
+  const songs = (await db.songs.toArray()) as (Song & { tv?: number })[]
+  for (const song of songs) {
+    if ((song.tv ?? 1) >= TIMING_VERSION) continue
+    const redo: Record<string, Song['voices'][string]['sections']> = {}
+    for (const [v, track] of Object.entries(song.voices)) {
+      try {
+        const pdf = await db.files.get(track.pdfFileId)
+        if (!pdf) continue
+        const lyrics = await readLyricsPdf(pdf.blob)
+        const text = (secs: { note: string | null; lines: { text: string }[] }[]) => JSON.stringify(secs.map((x) => [x.note, x.lines.map((l) => l.text)]))
+        const vocal = track.sections.some((x) => x.lines.length > 0 && x.lines.every((l) => isVocalise(l.text)))
+        if (!vocal && text(lyrics.sections) === text(track.sections)) continue
+        redo[v] = alignLyrics(lyrics, track.spans ?? spansFromActivity(track.activity), song.duration)
+      } catch (e) {
+        console.warn('Could not upgrade', song.title, v, e)
+      }
+    }
+    await db.songs.update(song.id, (s) => {
+      for (const [v, sections] of Object.entries(redo)) {
+        const t = s.voices[v]
+        if (!t) continue
+        t.sections = sections
+        t.timing = 'pauses'
+      }
+      ;(s as Song & { tv?: number }).tv = TIMING_VERSION
+    })
+  }
 }
 
 /**
@@ -91,6 +131,7 @@ export async function refineInBackground(pick: (s: Song) => string | null): Prom
   if (running) return
   running = true
   try {
+    await upgradeTiming().catch((e) => console.warn('Could not upgrade timings', e))
     const failed = new Set<string>()
     let done = 0
     for (;;) {
