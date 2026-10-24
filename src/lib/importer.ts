@@ -7,7 +7,8 @@ import { analyzeInWorker, decodeForAnalysis } from './audio/analyze'
 import { ANALYSIS_RATE } from './audio/activity'
 import { alignLyrics } from './audio/align'
 import { keepAwake } from './wakelock'
-import { holdRefine } from './refine'
+import { holdRefine, needsRefine, refineVoice } from './refine'
+import { pickVoice } from './names'
 
 export type Progress = (msg: string, done: number, total: number) => void
 
@@ -86,24 +87,50 @@ export async function addSongs(sources: SourceFile[]): Promise<PendingSong[]> {
 /** True when every file came from Drive, so the songs can be noted now and downloaded later. */
 export const canWaitToFetch = (sources: SourceFile[]) => sources.length > 0 && sources.every((s) => s.driveId)
 
-/** Downloads and analyses one noted song. Throws ImportError if Drive would not give the files. */
-export async function fetchSong(id: string, onProgress: Progress, signal?: AbortSignal): Promise<Song | undefined> {
+/**
+ * Downloads and analyses one noted song, then times every voice's lines with the speech model,
+ * your voices first (`mine`). Throws ImportError if Drive would not give the files.
+ * Stopped during the timing, the song is still saved and the rest is timed in the background later.
+ */
+export async function fetchSong(id: string, onProgress: Progress, signal?: AbortSignal, mine: string[] = []): Promise<Song | undefined> {
   const row = await db.pending.get(id)
   if (!row) return db.songs.get(id)
-  await importSources(row.files.map((f) => driveFile(f)), onProgress, false, signal)
-  await db.pending.delete(id)
-  return db.songs.get(id)
+  // Downloading and the first analysis are the smaller part; the speech model takes most of the time.
+  const DL = 0.35
+  const resume = holdRefine()
+  try {
+    await importSources(row.files.map((f) => driveFile(f)), (msg, done, total) => onProgress(msg, DL * (total ? done / total : 0), 1), false, signal)
+    await db.pending.delete(id)
+    const first = await db.songs.get(id)
+    if (!first) return undefined
+    const voices = needsRefine([first], (s) => pickVoice(s.voices, mine)).map((x) => x.voice)
+    for (let i = 0; i < voices.length; i++) {
+      signal?.throwIfAborted()
+      const label = `Finsynkar texten för ${voices[i]} (${i + 1}/${voices.length})`
+      onProgress(label, DL + ((1 - DL) * i) / voices.length, 1)
+      try {
+        const song = (await db.songs.get(id))!
+        await refineVoice(song, voices[i], (share) => onProgress(label, DL + ((1 - DL) * (i + share)) / voices.length, 1))
+      } catch (e) {
+        // The rough timing still works; the background sync tries again later.
+        console.warn('Could not refine', id, voices[i], e)
+      }
+    }
+    return db.songs.get(id)
+  } finally {
+    resume()
+  }
 }
 
 /** Downloads and analyses every noted song, for those who want it all at once. Stops when `signal` aborts. */
-export async function fetchAllSongs(onProgress: Progress, signal?: AbortSignal): Promise<number> {
+export async function fetchAllSongs(onProgress: Progress, signal?: AbortSignal, mine: string[] = []): Promise<number> {
   const rows = await db.pending.orderBy('order').toArray()
   const failed: { name: string; url?: string }[] = []
   const got: Song[] = []
   for (let i = 0; i < rows.length; i++) {
     try {
       signal?.throwIfAborted()
-      const song = await fetchSong(rows[i].id, (msg, done, total) => onProgress(msg, i + (total ? done / total : 0), rows.length), signal)
+      const song = await fetchSong(rows[i].id, (msg, done, total) => onProgress(msg, i + (total ? done / total : 0), rows.length), signal, mine)
       if (song) got.push(song)
     } catch (e) {
       if (signal?.aborted) throw e

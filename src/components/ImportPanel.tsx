@@ -154,7 +154,7 @@ export function ImportProgress({ text, share, summary, onCancel }: { text: strin
         {summary && <p className="text-sm font-black text-brand-700">{summary}</p>}
         <p className="font-bold">{text}</p>
         <Bar value={share} />
-        <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma för att hitta raderna. Det tar en liten stund per låt.</p>
+        <p className="text-xs text-gray-500">Appen lyssnar igenom varje stämma och synkar texten exakt. Det tar en stund per låt, längre på äldre telefoner och plattor.</p>
         <p className="rounded-xl bg-brand-50 p-2 text-xs font-bold text-brand-700">
           💡 Ha webbläsaren framme med appen öppen tills allt är klart. Byter du app eller flik, eller släcks skärmen, stannar nedladdningen. Appen håller skärmen tänd så länge.
         </p>
